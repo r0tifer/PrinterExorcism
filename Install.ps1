@@ -32,6 +32,7 @@ $Emoji = @{
 
 # ───── PHASE 1: Summon the Exorcist ─────
 Write-Host "🧭 Tracking down the Exorcist..." -ForegroundColor Cyan
+Write-Host ""
 Invoke-WebRequest -Uri $zipUrl -OutFile $zipFile -UseBasicParsing
 Start-Sleep -Seconds 2
 
@@ -44,12 +45,12 @@ Write-Host "$($Emoji.Gear) He's gathering holy relics and printer-banishment scr
 
 # ───── PHASE 2: Unseal the Relics ─────
 Write-Host ""
-Write-Host "📁 Unpacking the sacred arsenal..." -ForegroundColor Cyan
+Write-Host "🏠 Relocating the Exorcist to his command chamber..." -ForegroundColor DarkCyan
 Expand-Archive -Path $zipFile -DestinationPath $env:TEMP -Force
 Start-Sleep -Seconds 2
 
 # ───── PHASE 3: Binding the Exorcist ─────
-Write-Host "🏠 Relocating the Exorcist to his command chamber..." -ForegroundColor DarkCyan
+Write-Host "📁 Unpacking the sacred arsenal..." -ForegroundColor Cyan
 Import-Module (Join-Path $destPath 'PrinterExorcism.psm1') -Force
 
 # ───── Final Rites ─────
