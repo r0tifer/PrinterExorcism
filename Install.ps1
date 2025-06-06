@@ -1,4 +1,4 @@
-# ───── CONFIG: Prepare for Summoning ─────
+﻿# ───── CONFIG: Prepare for Summoning ─────
 $zipUrl    = "https://github.com/r0tifer/PrinterExorcism/archive/refs/heads/main.zip"
 $zipFile   = "$env:TEMP\PrinterExorcism.zip"
 $destPath  = "$env:TEMP\PrinterExorcism-main"

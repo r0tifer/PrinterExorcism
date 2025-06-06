@@ -1,4 +1,4 @@
-enum LogVerbosity {
+﻿enum LogVerbosity {
     Info = 0
     Warning = 1
     Critical = 2
