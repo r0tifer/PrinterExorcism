@@ -1,7 +1,3 @@
-﻿# Remove a leading BOM if the script was dot-sourced or piped into IEX
-if ($MyInvocation.MyCommand.Path -eq $null) { $ExecutionContext.InvokeCommand.ExpandString($null) }  # NOP for syntax
-$PSCommandPath = $PSCommandPath -replace '^\uFEFF'
-
 # ───── CONFIG: Prepare for Summoning ─────
 $zipUrl    = "https://github.com/r0tifer/PrinterExorcism/archive/refs/heads/main.zip"
 $zipFile   = "$env:TEMP\PrinterExorcism.zip"
