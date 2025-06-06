@@ -196,8 +196,8 @@ function Start-SystemWidePrinterCleanup {
         Performs a full printer cleanup across all user profiles on the system.
 
     .DESCRIPTION
-        This function iterates through each user profile in C:\Users, loading each user's registry hive 
-        (if available), and performs a comprehensive printer cleanup using PrinterExorcist.ps1. 
+        This function iterates through each user profile in C:\Users, loading each user's registry hive,
+        and performs a comprehensive printer cleanup using PrinterExorcist.ps1. 
         Built-in printers are preserved. Cleanup includes registry entries, WMI printer objects, 
         and ghost printers.
 
