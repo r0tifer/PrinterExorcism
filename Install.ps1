@@ -46,9 +46,9 @@ Invoke-NoProgress {
     Invoke-WebRequest -Uri $zipUrl -OutFile $zipFile -UseBasicParsing
 }
 
-Write-Host "✅ The Exorcist has been found! Now begins the persuasion ritual..." -ForegroundColor Green
+Write-Host "✅ The Exorcist has been found! Now begins the persuasion ritual... `n" -ForegroundColor Green
 Start-Sleep -Seconds 3
-Write-Host " "
+
 Write-Host "$($Emoji.Star) Persuasion successful — the Exorcist is on board!" -ForegroundColor Green
 
 Write-Host " "
