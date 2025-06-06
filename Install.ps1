@@ -48,6 +48,7 @@ Invoke-NoProgress {
 
 Write-Host "✅ The Exorcist has been found! Now begins the persuasion ritual..." -ForegroundColor Green
 Start-Sleep -Seconds 3
+Write-Host " "
 Write-Host "$($Emoji.Star) Persuasion successful — the Exorcist is on board!" -ForegroundColor Green
 
 Write-Host " "
@@ -64,7 +65,7 @@ Write-Host ""
 
 # ───── PHASE 3: Binding the Exorcist ─────
 Write-Host "📁 Unpacking the sacred arsenal..." -ForegroundColor Cyan
-Import-Module (Join-Path $destPath 'PrinterExorcism.psm1') -Force
+Import-Module (Join-Path $destPath 'PrinterExorcism.psm1') -Force -DisableNameChecking
 
 # ───── Final Rites ─────
 Write-Host ""
