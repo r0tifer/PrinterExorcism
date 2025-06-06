@@ -48,13 +48,6 @@ function Invoke-PrinterExorcism {
         [string]$Verbosity = "Critical"
     )
 
-    enum LogVerbosity {
-        Info = 0
-        Warning = 1
-        Critical = 2
-        Debug = 3
-    }
-
     # If no actionable flags are set, show help and exit
     if (-not $FullCleanup -and -not $CompareGPO -and -not $Automated -and -not $TargetUser) {
         Write-Host "`nPrinterExorcism Module - CLI Usage" -ForegroundColor Cyan
