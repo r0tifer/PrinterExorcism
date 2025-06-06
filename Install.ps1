@@ -17,6 +17,19 @@ $zipUrl    = "https://github.com/r0tifer/PrinterExorcism/archive/refs/heads/main
 $zipFile   = "$env:TEMP\PrinterExorcism.zip"
 $destPath  = "$env:TEMP\PrinterExorcism-main"
 
+# ───── Emoji table: Prepare for Summoning ─────
+$Emoji = @{
+    OK          = '✅'      # 9989
+    Hammer      = '⚒'      # 9874
+    Anvil       = '⚙'      # 9881
+    Coffee      = '☕'      # 9749
+    Star        = '⭐'      # 11088
+    Phone       = '☎'      # 9742
+    Scissors    = '✂'      # 9986
+    Check       = '✔'      # 10004
+    Gear        = '⚙'
+}
+
 # ───── PHASE 1: Summon the Exorcist ─────
 Write-Host "🧭 Tracking down the Exorcist..." -ForegroundColor Cyan
 Invoke-WebRequest -Uri $zipUrl -OutFile $zipFile -UseBasicParsing
@@ -27,7 +40,7 @@ Start-Sleep -Seconds 3
 Write-Host "$($Emoji.Star) Persuasion successful — the Exorcist is on board!" -ForegroundColor Green
 
 Write-Host ""
-Write-Host "$($Emoji.Pack) He's gathering holy relics and printer-banishment scrolls..." -ForegroundColor Yellow
+Write-Host "$($Emoji.Gear) He's gathering holy relics and printer-banishment scrolls..." -ForegroundColor Yellow
 
 # ───── PHASE 2: Unseal the Relics ─────
 Write-Host ""
