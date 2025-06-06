@@ -39,4 +39,4 @@ Import-Module (Join-Path $destPath 'PrinterExorcism.psm1') -Force
 # ───── Final Rites ─────
 Write-Host ""
 Write-Host "🔱 The Exorcist is in place and ready to purge the unholy printer spirits!" -ForegroundColor Green
-Write-Host "🔥 Run 'Start-PrinterExorcismSession' to begin the reckoning." -ForegroundColor Magenta
+Write-Host "🔥 Run 'Invoke-PrinterExorcism' to begin the reckoning." -ForegroundColor Magenta
