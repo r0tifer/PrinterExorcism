@@ -24,11 +24,11 @@ Start-Sleep -Seconds 2
 
 Write-Host "✅ The Exorcist has been found! Now begins the persuasion ritual..." -ForegroundColor Green
 Start-Sleep -Seconds 3
-Write-Host "🧳 He's packing up his holy relics and printer banishment scrolls..." -ForegroundColor Yellow
+Write-Host "🎒 He's packing up his holy relics and printer banishment scrolls..." -ForegroundColor Yellow
 
 # ───── PHASE 2: Unseal the Relics ─────
 Write-Host ""
-Write-Host "📦 Unpacking the sacred arsenal..." -ForegroundColor Cyan
+Write-Host "🗃️ Unpacking the sacred arsenal..." -ForegroundColor Cyan
 Expand-Archive -Path $zipFile -DestinationPath $env:TEMP -Force
 Start-Sleep -Seconds 2
 
