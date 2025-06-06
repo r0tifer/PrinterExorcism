@@ -28,7 +28,7 @@ Write-Host "🧳 He's packing up his holy relics and printer banishment scrolls.
 
 # ───── PHASE 2: Unseal the Relics ─────
 Write-Host ""
-Write-Host "`📦 Unpacking the sacred arsenal..." -ForegroundColor Cyan
+Write-Host "📦 Unpacking the sacred arsenal..." -ForegroundColor Cyan
 Expand-Archive -Path $zipFile -DestinationPath $env:TEMP -Force
 Start-Sleep -Seconds 2
 
@@ -38,5 +38,5 @@ Import-Module (Join-Path $destPath 'PrinterExorcism.psm1') -Force
 
 # ───── Final Rites ─────
 Write-Host ""
-Write-Host "`🔱 The Exorcist is in place and ready to purge the unholy printer spirits!" -ForegroundColor Green
+Write-Host "🔱 The Exorcist is in place and ready to purge the unholy printer spirits!" -ForegroundColor Green
 Write-Host "🔥 Run 'Start-PrinterExorcismSession' to begin the reckoning." -ForegroundColor Magenta
