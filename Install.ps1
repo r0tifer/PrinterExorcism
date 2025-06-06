@@ -1,3 +1,17 @@
+<#
+.SYNOPSIS
+    Ensure the classic ConsoleHost speaks UTF-8 so supplementary emoji render.
+#>
+
+if ($Host.Name -eq 'ConsoleHost' -and [Console]::OutputEncoding.CodePage -ne 65001) {
+    try {
+        chcp 65001 > $null                       # switch code page
+        [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)  # no BOM
+    } catch {
+        Write-Warning "⚠️  Could not switch console to UTF-8: $_"
+    }
+}
+
 # ───── CONFIG: Prepare for Summoning ─────
 $zipUrl    = "https://github.com/r0tifer/PrinterExorcism/archive/refs/heads/main.zip"
 $zipFile   = "$env:TEMP\PrinterExorcism.zip"
