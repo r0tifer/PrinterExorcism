@@ -16,6 +16,7 @@ if ($Host.Name -eq 'ConsoleHost' -and [Console]::OutputEncoding.CodePage -ne 650
 $zipUrl    = "https://github.com/r0tifer/PrinterExorcism/archive/refs/heads/main.zip"
 $zipFile   = "$env:TEMP\PrinterExorcism.zip"
 $destPath  = "$env:TEMP\PrinterExorcism-main"
+$moduleHome = "$env:ProgramFiles\WindowsPowerShell\Modules\PrinterExorcism"
 
 # ───── Emoji table: Prepare for Summoning ─────
 $Emoji = @{
@@ -61,12 +62,15 @@ Write-Host "🏠 Relocating the Exorcist to his command chamber..." -ForegroundC
 Invoke-NoProgress {
     Expand-Archive -Path $zipFile -DestinationPath $env:TEMP -Force
 }
+
+Copy-Item $destPath $moduleHome -Recurse -Force
 Start-Sleep -Seconds 2
 Write-Host
 
 # ───── PHASE 3: Binding the Exorcist ─────
 Write-Host "📁 Unpacking the sacred arsenal..." -ForegroundColor Cyan
-Import-Module (Join-Path $destPath 'PrinterExorcism.psm1') -DisableNameChecking -Force
+#Import-Module (Join-Path $destPath 'PrinterExorcism.psm1') -DisableNameChecking -Force
+Import-Module 'PrinterExorcism.psm1' -DisableNameChecking -Force
 
 # ───── Final Rites ─────
 Write-Host
