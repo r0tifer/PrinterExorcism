@@ -10,7 +10,6 @@ $privatePath = Join-Path $PSScriptRoot 'Exorcist\Private'
 $commonPath = Join-Path $PSScriptRoot 'Exorcist'
 
 . (Join-Path $privatePath 'Watch-PrinterExorcism.ps1')
-. (Join-Path $privatePath 'Discover-Printers.ps1')
 . (Join-Path $commonPath 'common.ps1')
 function Invoke-PrinterExorcism {
     <#
@@ -182,7 +181,7 @@ function Show-PrinterDiscovery {
         [switch]$JSON
     )
 
-    #$scriptPath = Join-Path $PSScriptRoot "Exorcist\Private\Discover-Printers.ps1"
+    $scriptPath = Join-Path $PSScriptRoot "Exorcist\Private\Discover-Printers.ps1"
     $args = @()
     if ($TargetUser) { $args += @("-TargetUser", $TargetUser) }
     if ($JSON)       { $args += "-JSON" }
