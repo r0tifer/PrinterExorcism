@@ -43,7 +43,8 @@
         'Make-PrintersSuffer',
         'Start-SystemWidePrinterCleanup',
         'Show-PrinterDiscovery',
-        'Invoke-PrinterDiscovery'
+        'Invoke-PrinterDiscovery',
+        'Invoke-PrinterExorcism'
     )
 
     # Cmdlets to export from this module
