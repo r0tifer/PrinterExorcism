@@ -175,7 +175,7 @@ function Show-PrinterDiscovery {
         [switch]$JSON
     )
 
-    $scriptPath = Join-Path $PSScriptRoot "Private\Discover-Printers.ps1"
+    $scriptPath = Join-Path $PSScriptRoot "Exorcist\Private\Discover-Printers.ps1"
     $args = @()
     if ($TargetUser) { $args += @("-TargetUser", $TargetUser) }
     if ($JSON)       { $args += "-JSON" }
