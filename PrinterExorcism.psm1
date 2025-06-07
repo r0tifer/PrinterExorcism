@@ -188,6 +188,18 @@ function Show-PrinterDiscovery {
 
     & $scriptPath @args
 }
+Export-ModuleMember -Function Show-PrinterDiscovery
+
+function Invoke-PrinterDiscovery {
+    [CmdletBinding()]
+    param(
+        [string]$TargetUser,
+        [switch]$JSON
+    )
+
+    Show-PrinterDiscovery @PSBoundParameters
+}
+Export-ModuleMember -Function Invoke-PrinterDiscovery
 
 function Start-SystemWidePrinterCleanup {
     <#
@@ -241,4 +253,4 @@ function Start-SystemWidePrinterCleanup {
     $null = & "$PSScriptRoot\PrinterExorcist.ps1" -Automated -FullCleanup -RetryOnly -Verbosity $Verbosity
 }
 
-Export-ModuleMember -Function Show-PrinterDiscovery, Start-SystemWidePrinterCleanup
+Export-ModuleMember -Function Start-SystemWidePrinterCleanup
