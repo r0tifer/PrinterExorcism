@@ -5,6 +5,13 @@
     Debug = 3
 }
 
+# ─── Load internal helper scripts ───
+$privatePath = Join-Path $PSScriptRoot 'Exorcist\Private'
+$commonPath = Join-Path $PSScriptRoot 'Exorcist'
+
+. (Join-Path $privatePath 'Watch-PrinterExorcism.ps1')
+. (Join-Path $privatePath 'Discover-Printers.ps1')
+. (Join-Path $commonPath 'common.ps1')
 function Invoke-PrinterExorcism {
     <#
     .SYNOPSIS
@@ -175,7 +182,7 @@ function Show-PrinterDiscovery {
         [switch]$JSON
     )
 
-    $scriptPath = Join-Path $PSScriptRoot "Exorcist\Private\Discover-Printers.ps1"
+    #$scriptPath = Join-Path $PSScriptRoot "Exorcist\Private\Discover-Printers.ps1"
     $args = @()
     if ($TargetUser) { $args += @("-TargetUser", $TargetUser) }
     if ($JSON)       { $args += "-JSON" }
@@ -204,7 +211,7 @@ function Start-SystemWidePrinterCleanup {
         [switch]$Automated,
         [string]$Verbosity = "Critical"
     )
-    . "$PSScriptRoot\Common.ps1"
+    #. "$PSScriptRoot\Common.ps1"
 
     $Users = Get-ChildItem "C:\Users" -Directory |
         Where-Object { Test-Path "$($_.FullName)\NTUSER.DAT" }
