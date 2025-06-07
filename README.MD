@@ -97,4 +97,4 @@ This project is licensed under the **GNU General Public License v3.0**. See the 
 
 ## 👨‍🔧 Author
 
-Created with righteous indignation by **Michael Levesque** for **Deeptree Inc**.
+Created with righteous indignation by **Michael Levesque**.
