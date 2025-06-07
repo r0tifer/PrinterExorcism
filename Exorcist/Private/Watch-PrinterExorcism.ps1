@@ -23,9 +23,9 @@ function Start-PrinterExorcismSession {
         Debug = 3
     }
 
-    # Import common.ps1 to expose Log-PrinterEvent
+    # ───── Import shared log system ─────
     try {
-        . "$PSScriptRoot\Common.ps1"
+        . "$PSScriptRoot\..\Common.ps1"
     } catch {
         Write-Host "Failed to import Common.ps1 logging module: $_" -ForegroundColor Red
         return 100

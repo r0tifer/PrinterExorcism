@@ -24,7 +24,12 @@ enum LogVerbosity {
 }
 
 # ───── Import shared log system ─────
-. "$PSScriptRoot\Common.ps1"
+    try {
+        . "$PSScriptRoot\..\Common.ps1"
+    } catch {
+        Write-Host "Failed to import Common.ps1 logging module: $_" -ForegroundColor Red
+        return 100
+    }
 
 # ───── Config ─────
 $BuiltinPrinters = @(
