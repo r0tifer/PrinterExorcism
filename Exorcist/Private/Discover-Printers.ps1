@@ -40,9 +40,9 @@ if ($TargetUser) {
         reg load $MountPoint $HivePath | Out-Null
         $Root = "Registry::HKU\TempHive_Discovery"
         $Mounted = $true
-        Log "🔍 Loaded hive for discovery: $TargetUser"
+        Log "Loaded hive for discovery: $TargetUser"
     } catch {
-        Log "❌ Failed to load user hive: $_" Critical
+        Log "Failed to load user hive: $_" Critical
         return
     }
 } else {
@@ -58,7 +58,7 @@ $Discovery = [ordered]@{
     timestamp = (Get-Date).ToString("s")
 }
 
-Write-Host "`n🖨  Printer Discovery for: $TargetUser" -ForegroundColor Cyan
+Write-Host "`nPrinter Discovery for: $TargetUser" -ForegroundColor Cyan
 
 # ─── Registry Printer Keys ─────────────────────────────
 $paths = @(
@@ -73,7 +73,7 @@ $paths = @(
 foreach ($sub in $paths) {
     $full = Join-Path $Root $sub
     if (Test-Path $full) {
-        Write-Host "`n📁 $sub" -ForegroundColor Yellow
+        Write-Host "`n$sub" -ForegroundColor Yellow
         $entries = Get-ChildItem -Path $full | ForEach-Object { $_.PSChildName }
         $entries | ForEach-Object { Write-Host "   - $_" }
         $Discovery.registry_entries[$sub] = $entries
@@ -86,16 +86,16 @@ try {
     if (Test-Path $defaultKey) {
         $defaultPrinter = (Get-ItemProperty -Path $defaultKey -Name "Device").Device.Split(",")[0]
         $Discovery.default_printer = $defaultPrinter
-        Write-Host "`n⭐ Default Printer: $defaultPrinter" -ForegroundColor Magenta
+        Write-Host "`nDefault Printer: $defaultPrinter" -ForegroundColor Magenta
     }
 } catch {
-    Log "⚠️  Could not read default printer: $_" Warning
+    Log "Could not read default printer: $_" Warning
 }
 
 # ─── Get-WmiObject Results ─────────────────────────────
 try {
     $Printers = Get-WmiObject -Class Win32_Printer
-    Write-Host "`n🖨  WMI Printers:" -ForegroundColor Green
+    Write-Host "`nWMI Printers:" -ForegroundColor Green
     foreach ($p in $Printers) {
         $printer = [ordered]@{
             name = $p.Name
@@ -118,13 +118,13 @@ try {
         $Discovery.printers += $printer
     }
 } catch {
-    Log "⚠️  Failed to get printers from WMI: $_" Warning
+    Log "Failed to get printers from WMI: $_" Warning
 }
 
 # ─── Get-Printer (if available) ───────────────────────
 try {
     $allPrinters = Get-Printer
-    Write-Host "`n🖨  Get-Printer Results:" -ForegroundColor Blue
+    Write-Host "`nGet-Printer Results:" -ForegroundColor Blue
     foreach ($gp in $allPrinters) {
         $exists = $Discovery.printers | Where-Object { $_.name -eq $gp.Name }
         if (-not $exists) {
@@ -150,18 +150,18 @@ try {
         }
     }
 } catch {
-    Log "⚠️  Get-Printer failed: $_" Warning
+    Log "Get-Printer failed: $_" Warning
 }
 
 # ─── Output JSON if requested ─────────────────────────
 if ($JSON) {
     $jsonOut = Join-Path $env:TEMP "PrinterDiscovery.$($TargetUser).json"
     $Discovery | ConvertTo-Json -Depth 5 | Set-Content -Path $jsonOut -Encoding UTF8
-    Write-Host "`n📄 Discovery saved to: $jsonOut" -ForegroundColor Gray
+    Write-Host "`nDiscovery saved to: $jsonOut" -ForegroundColor Gray
 }
 
 # ─── Cleanup ──────────────────────────────────────────
 if ($Mounted) {
     reg unload $MountPoint | Out-Null
-    Write-Host "`n🧹 Unmounted user hive: $TargetUser" -ForegroundColor DarkGray
+    Write-Host "`nUnmounted user hive: $TargetUser" -ForegroundColor DarkGray
 }
