@@ -17,6 +17,7 @@ $zipUrl    = "https://github.com/r0tifer/PrinterExorcism/archive/refs/heads/main
 $zipFile   = "$env:TEMP\PrinterExorcism.zip"
 $destPath  = "$env:TEMP\PrinterExorcism-main"
 $moduleHome = "$env:ProgramFiles\WindowsPowerShell\Modules\PrinterExorcism"
+$installedManifest = Join-Path $moduleHome 'PrinterExorcism.psd1'
 
 # ───── Emoji table: Prepare for Summoning ─────
 $Emoji = @{
@@ -63,16 +64,16 @@ Invoke-NoProgress {
     Expand-Archive -Path $zipFile -DestinationPath $env:TEMP -Force
 }
 
-Copy-Item $destPath $moduleHome -Recurse -Force
+New-Item -ItemType Directory -Path $moduleHome -Force | Out-Null
+Copy-Item (Join-Path $destPath '*') $moduleHome -Recurse -Force
 Start-Sleep -Seconds 2
 Write-Host
 
 # ───── PHASE 3: Binding the Exorcist ─────
 Write-Host "📁 Unpacking the sacred arsenal..." -ForegroundColor Cyan
-#Import-Module (Join-Path $destPath 'PrinterExorcism.psm1') -DisableNameChecking -Force
-Import-Module 'PrinterExorcism.psm1' -DisableNameChecking -Force
+Import-Module $installedManifest -DisableNameChecking -Force
 
 # ───── Final Rites ─────
 Write-Host
 Write-Host "🔱 The Exorcist is in place and ready to purge the unholy printer spirits!" -ForegroundColor Green
-Write-Host "🔥 Run 'Invoke-PrinterExorcism' to begin the reckoning." -ForegroundColor Magenta
+Write-Host "🔥 Run 'Invoke-PrinterExorcism' or 'Start-PrinterExorcismSession' to begin the reckoning." -ForegroundColor Magenta

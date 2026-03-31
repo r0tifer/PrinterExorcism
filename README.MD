@@ -33,22 +33,22 @@ git clone https://github.com/r0tifer/PrinterExorcism.git; Import-Module .\Printe
 
 ### Show CLI Help
 ```powershell
-Start-PrinterExorcismSession
+Invoke-PrinterExorcism
 ```
 
 ### Discovery Mode
 ```powershell
-Start-PrinterExorcismSession -JSON
+Invoke-PrinterDiscovery -JSON
 ```
 
 ### Full Cleanup (User-Mode First, Then Elevation if Needed)
 ```powershell
-Start-PrinterExorcismSession -FullCleanup
+Invoke-PrinterExorcism -FullCleanup
 ```
 
 ### System-Wide Purge (Requires Admin, Affects All Users)
 ```powershell
-Start-PrinterExorcismSession -FullCleanup -Automated -TargetUser "SYSTEM" -CompareGPO
+Start-SystemWidePrinterCleanup -Automated -Verbosity Debug
 ```
 
 ### For Demos or Maximum Theatrics
@@ -56,20 +56,24 @@ Start-PrinterExorcismSession -FullCleanup -Automated -TargetUser "SYSTEM" -Compa
 Make-PrintersSuffer -FullCleanup -Automated -Verbosity Debug
 ```
 
+### Advanced Session Entry Point
+```powershell
+Start-PrinterExorcismSession -FullCleanup
+```
+
+`Start-PrinterExorcismSession` remains available for direct session orchestration, including `-JSON` discovery mode.
+
 ---
 
-## 🎚 Supported Parameters
+## 🎚 Public Commands
 
-| Flag             | Description |
-|------------------|-------------|
-| `-Discovery`     | Discover printers and linked registry keys only |
-| `-FullCleanup`   | Perform complete cleanup (registry + printer objects) |
-| `-CompareGPO`    | Compare current printers with GPO-deployed ones |
-| `-Automated`     | Take all actions without prompting |
-| `-RetryOnly`     | Re-run only failed steps from Phase 1 |
-| `-TargetUser`    | Perform cleanup on another (offline) user hive |
-| `-SystemWide`    | Clean printers across all user hives |
-| `-Verbosity`     | Log level: Info, Warning, Critical, Debug |
+| Command | Purpose |
+|---------|---------|
+| `Invoke-PrinterExorcism` | Main cleanup entry point for current or target user |
+| `Invoke-PrinterDiscovery` | Read-only discovery output for current or target user |
+| `Start-PrinterExorcismSession` | Lower-level session orchestration entry point |
+| `Start-SystemWidePrinterCleanup` | Full cleanup across all user profiles |
+| `Make-PrintersSuffer` | Dramatic wrapper around the main cleanup flow |
 
 ---
 

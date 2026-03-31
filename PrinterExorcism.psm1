@@ -10,7 +10,10 @@ $privatePath = Join-Path $PSScriptRoot 'Exorcist\Private'
 $commonPath = Join-Path $PSScriptRoot 'Exorcist'
 
 . (Join-Path $privatePath 'Watch-PrinterExorcism.ps1')
-. (Join-Path $commonPath 'common.ps1')
+. (Join-Path $commonPath 'Common.ps1')
+
+Export-ModuleMember -Function Start-PrinterExorcismSession
+
 function Invoke-PrinterExorcism {
     <#
     .SYNOPSIS
@@ -74,11 +77,13 @@ function Invoke-PrinterExorcism {
 
     $verbosityLevel = [LogVerbosity]::$Verbosity
     $params = @{
-        FullCleanup = $FullCleanup
-        CompareGPO  = $CompareGPO
-        Automated   = $Automated
-        TargetUser  = $TargetUser
-        Verbosity   = $verbosityLevel
+        Verbosity = $verbosityLevel
+    }
+    if ($FullCleanup) { $params.FullCleanup = $true }
+    if ($CompareGPO)  { $params.CompareGPO  = $true }
+    if ($Automated)   { $params.Automated   = $true }
+    if (-not [string]::IsNullOrWhiteSpace($TargetUser)) {
+        $params.TargetUser = $TargetUser
     }
 
     return Start-PrinterExorcismSession @params
@@ -148,11 +153,17 @@ function Make-PrintersSuffer {
     Start-Sleep -Milliseconds 700
     Write-Host "`n🔥 Initiating exorcism protocol...`n" -ForegroundColor Yellow
 
-    Invoke-PrinterExorcism -FullCleanup:$FullCleanup `
-                           -CompareGPO:$CompareGPO `
-                           -Automated:$Automated `
-                           -TargetUser:$TargetUser `
-                           -Verbosity:$Verbosity
+    $invokeParams = @{
+        Verbosity = $Verbosity
+    }
+    if ($FullCleanup) { $invokeParams.FullCleanup = $true }
+    if ($CompareGPO)  { $invokeParams.CompareGPO  = $true }
+    if ($Automated)   { $invokeParams.Automated   = $true }
+    if (-not [string]::IsNullOrWhiteSpace($TargetUser)) {
+        $invokeParams.TargetUser = $TargetUser
+    }
+
+    Invoke-PrinterExorcism @invokeParams
 }
 Export-ModuleMember -Function Make-PrintersSuffer
 
@@ -230,7 +241,7 @@ function Start-SystemWidePrinterCleanup {
     foreach ($user in $Users) {
         $Target = $user.Name
         Write-Host "`n🧼 Running cleanup for user: $Target" -ForegroundColor Cyan
-        $script = Join-Path $PSScriptRoot "PrinterExorcist.ps1"
+        $script = Join-Path $PSScriptRoot "Exorcist\Private\PrinterExorcist.ps1"
         $args = @(
             '-ExecutionPolicy', 'Bypass',
             '-File', "`"$script`"",
@@ -250,7 +261,7 @@ function Start-SystemWidePrinterCleanup {
 
     # Global cleanup
     Write-Host "`n🗑  Performing HKLM and WMI printer cleanup..." -ForegroundColor Cyan
-    $null = & "$PSScriptRoot\PrinterExorcist.ps1" -Automated -FullCleanup -RetryOnly -Verbosity $Verbosity
+    $null = & "$PSScriptRoot\Exorcist\Private\PrinterExorcist.ps1" -Automated -FullCleanup -RetryOnly -Verbosity $Verbosity
 }
 
 Export-ModuleMember -Function Start-SystemWidePrinterCleanup

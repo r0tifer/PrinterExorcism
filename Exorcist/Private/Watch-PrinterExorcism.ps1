@@ -166,7 +166,7 @@ function Start-PrinterExorcismSession {
     Log "Watcher initiated with user-mode run of PrinterExorcist.ps1..." Info
 
     # ─── Handle Discovery Mode ─────────────────────────────
-    if ($PSBoundParameters.ContainsKey('JSON') -or $PSBoundParameters.ContainsKey('TargetUser')) {
+    if ($JSON) {
         return Invoke-PrinterDiscovery -TargetUser:$TargetUser -JSON:$JSON
     }
 
