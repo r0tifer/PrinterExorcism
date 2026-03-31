@@ -47,49 +47,49 @@ The module installs to `%ProgramFiles%\WindowsPowerShell\Modules\PrinterExorcism
 
 ### Full exorcism (current user)
 ```powershell
-Start-PrinterExorcismSession
+Invoke-PrinterExorcism -FullCleanup -Automated
 ```
 
 Runs a full two-phase cleanup. Phase 1 executes in user context. If anything fails, Phase 2 launches elevated automatically.
 
 ### Target another user's profile
 ```powershell
-Start-PrinterExorcismSession -TargetUser jsmith
+Invoke-PrinterExorcism -TargetUser jsmith
 ```
 
 Mounts `C:\Users\jsmith\NTUSER.DAT`, performs cleanup against that hive, unmounts when finished. Useful for cleaning up a user's printers while they're logged off, or from an admin session.
 
 ### GPO-aware cleanup
 ```powershell
-Start-PrinterExorcismSession -CompareGPO
+Invoke-PrinterExorcism -CompareGPO
 ```
 
 Compares active printer connections against the GPO policy key. Connections not covered by policy are removed; GPO-deployed printers are left intact.
 
 ### Discover without touching anything
 ```powershell
-Start-PrinterExorcismSession -JSON
+Invoke-PrinterExorcism -JSON
 ```
 
 Runs the discovery module in read-only mode. Enumerates all registry printer keys, WMI printers, GPO connections, default printer, and ghost candidates. Outputs to the terminal and saves a JSON report to `%TEMP%\PrinterDiscovery.<username>.json`.
 
 ### Automated / headless deployment
 ```powershell
-Start-PrinterExorcismSession -Automated
+Invoke-PrinterExorcism -Automated
 ```
 
 Suppresses Desktop output. Logs and status files are written to `%LOCALAPPDATA%\PrinterExorcist`. Suitable for RMM scripts, scheduled tasks, or deployment pipelines.
 
 ### Combine flags
 ```powershell
-Start-PrinterExorcismSession -TargetUser jsmith -CompareGPO -Automated
+Invoke-PrinterExorcism -TargetUser jsmith -CompareGPO -Automated
 ```
 
 ---
 
 ## Use Cases
 
-**Help desk printer reset** — A user's printer list is a graveyard of old mappings from three office moves ago. Run `Start-PrinterExorcismSession -TargetUser <username>` from an admin session to clear the slate while they wait.
+**Help desk printer reset** — A user's printer list is a graveyard of old mappings from three office moves ago. Run `Invoke-PrinterExorcism -TargetUser <username>` from an admin session to clear the slate while they wait.
 
 **Post-migration cleanup** — After a print server migration or GPO restructure, ghost connections linger in user profiles. Run with `-CompareGPO` to surgically remove everything that isn't covered by current policy.
 
