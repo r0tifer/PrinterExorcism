@@ -11,6 +11,7 @@ param(
     [string]$RetryGhosts,
     [string]$TargetUser,
     [switch]$RetryOnly,
+    [switch]$NoSelfElevation,
     [string]$StatusPath,
     [string]$LogPath,
     [ValidateSet("Info", "Warning", "Critical", "Debug")]
@@ -400,7 +401,7 @@ $phaseNum = if ($RetryOnly) { 2 } else { 1 }
 Write-StatusJson -Printers $FailedPrinters -Ghosts $FailedGhosts -CleanedPrinters $CleanedPrinters -CleanedGhosts $CleanedGhosts -Phase $phaseNum
 
 # Elevation Retry Phase
-if (-not $RetryOnly -and ($FailedPrinters -or $FailedGhosts)) {
+if (-not $NoSelfElevation -and -not $RetryOnly -and ($FailedPrinters -or $FailedGhosts)) {
     $scriptPath = $MyInvocation.MyCommand.Definition
     $printerArg = ($FailedPrinters -join '|')
     $ghostArg   = ($FailedGhosts   -join '|')

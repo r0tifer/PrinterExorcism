@@ -104,6 +104,7 @@ function Start-PrinterExorcismSession {
 
     function Build-ArgList {
         $args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PrinterScript`"")
+        $args += "-NoSelfElevation"
         $args += @("-StatusPath", "`"$StatusPath`"")
         $args += @("-LogPath", "`"$LogPath`"")
         if ($FullCleanup)    { $args += "-FullCleanup" }
@@ -266,6 +267,7 @@ function Start-PrinterExorcismSession {
 
         $innerArgsList = @(
             '-RetryOnly',
+            '-NoSelfElevation',
             '-StatusPath', "`"$StatusPath`"",
             '-LogPath', "`"$LogPath`""
         )
@@ -280,16 +282,17 @@ function Start-PrinterExorcismSession {
         if ($CompareGPO)  { $innerArgsList += '-CompareGPO'  }
         $innerArgsList += '-TargetUser', "`"$TargetUser`""
 
-        $innerArgsString = $innerArgsList -join ' '
-        $OrigLocalAppData = $env:LOCALAPPDATA
-
         Log "Phase 2 required - launching elevated (targeting user: $TargetUser)..." Info
-        Log "Command: powershell.exe -NoProfile -ExecutionPolicy Bypass -Command & { `$env:LOCALAPPDATA = '$OrigLocalAppData'; & `"$PrinterScript`" $innerArgsString }" Debug
+        $phase2ArgList = @(
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', "`"$PrinterScript`""
+        ) + $innerArgsList
+        Log "Command: powershell.exe $($phase2ArgList -join ' ')" Debug
 
         Write-Host "Phase 2 required - launching elevated (targeting user: $TargetUser)..." -ForegroundColor Yellow
-        $command = "& { `$env:LOCALAPPDATA = '$OrigLocalAppData'; & `"$PrinterScript`" $innerArgsString }"
         $phase2Process = Start-Process -FilePath 'powershell.exe' `
-            -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-Command',$command `
+            -ArgumentList $phase2ArgList `
             -Verb RunAs -WindowStyle Hidden `
             -PassThru -Wait
 
