@@ -30,20 +30,62 @@ function Log {
     Log-PrinterEvent -msg $Message -Level $Level.ToString() -LogPath $LogPath -Verbosity $ConsoleLevel
 }
 
-# ─── Setup ─────────────────────────────────────────────
-$Mounted = $false
-if ($TargetUser) {
-    $HivePath = "C:\Users\$TargetUser\NTUSER.DAT"
-    $MountPoint = "HKU\TempHive_Discovery"
+function Get-LoadedUserHiveRoot {
+    param(
+        [Parameter(Mandatory)]
+        [string]$UserName
+    )
+
+    $profileList = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList"
 
     try {
-        reg load $MountPoint $HivePath | Out-Null
-        $Root = "Registry::HKU\TempHive_Discovery"
-        $Mounted = $true
-        Log "Loaded hive for discovery: $TargetUser"
+        $profile = Get-ChildItem -Path $profileList -ErrorAction Stop |
+            ForEach-Object {
+                $props = Get-ItemProperty -Path $_.PSPath -Name ProfileImagePath -ErrorAction SilentlyContinue
+                [pscustomobject]@{
+                    Sid = $_.PSChildName
+                    ProfileImagePath = $props.ProfileImagePath
+                }
+            } |
+            Where-Object {
+                $_.ProfileImagePath -and (Split-Path $_.ProfileImagePath -Leaf) -ieq $UserName
+            } |
+            Select-Object -First 1
+
+        if ($profile) {
+            $root = "Registry::HKEY_USERS\$($profile.Sid)"
+            if (Test-Path $root) {
+                return $root
+            }
+        }
     } catch {
-        Log "Failed to load user hive: $_" Critical
-        return
+        Log "Failed to resolve loaded hive for ${UserName}: $_" Debug
+    }
+
+    return $null
+}
+
+# ─── Setup ─────────────────────────────────────────────
+$Mounted = $false
+$CurrentUser = $env:USERNAME
+if ($TargetUser -and $TargetUser -ne $CurrentUser) {
+    $HivePath = "C:\Users\$TargetUser\NTUSER.DAT"
+    $MountPoint = "HKU\TempHive_Discovery"
+    $LoadedHiveRoot = Get-LoadedUserHiveRoot -UserName $TargetUser
+
+    if ($LoadedHiveRoot) {
+        $Root = $LoadedHiveRoot
+        Log "Using already-loaded hive for discovery: $TargetUser"
+    } else {
+        try {
+            reg load $MountPoint $HivePath | Out-Null
+            $Root = "Registry::HKU\TempHive_Discovery"
+            $Mounted = $true
+            Log "Loaded hive for discovery: $TargetUser"
+        } catch {
+            Log "Failed to load user hive: $_" Critical
+            return
+        }
     }
 } else {
     $Root = "HKCU:"

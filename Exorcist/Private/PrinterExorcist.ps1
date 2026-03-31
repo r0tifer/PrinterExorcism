@@ -70,6 +70,41 @@ function Is-Admin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
 }
 
+function Get-LoadedUserHiveRoot {
+    param(
+        [Parameter(Mandatory)]
+        [string]$UserName
+    )
+
+    $profileList = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList"
+
+    try {
+        $profile = Get-ChildItem -Path $profileList -ErrorAction Stop |
+            ForEach-Object {
+                $props = Get-ItemProperty -Path $_.PSPath -Name ProfileImagePath -ErrorAction SilentlyContinue
+                [pscustomobject]@{
+                    Sid = $_.PSChildName
+                    ProfileImagePath = $props.ProfileImagePath
+                }
+            } |
+            Where-Object {
+                $_.ProfileImagePath -and (Split-Path $_.ProfileImagePath -Leaf) -ieq $UserName
+            } |
+            Select-Object -First 1
+
+        if ($profile) {
+            $root = "Registry::HKEY_USERS\$($profile.Sid)"
+            if (Test-Path $root) {
+                return $root
+            }
+        }
+    } catch {
+        Log "Failed to resolve loaded hive for ${UserName}: $_" "Debug"
+    }
+
+    return $null
+}
+
 function Remove-HKLMPrinterConnections {
     Log "Clearing HKLM printer connection GUIDs..." "Info"
 
@@ -132,19 +167,34 @@ $FailedPrinters = @()
 $FailedGhosts = @()
 
 # ───── Registry Context ─────
+$CurrentUser = $env:USERNAME
 $UserHivePath = "C:\Users\$TargetUser\NTUSER.DAT"
 $MountKey = "HKU\TempUserHive"
-$HKCU = "Registry::$MountKey"
+$HKCU = "HKCU:"
+$MountedHive = $false
 
-# Only mount if not already mounted
-if (-not (Test-Path $HKCU)) {
-    try {
-        reg load $MountKey $UserHivePath | Out-Null
-        Log "Mounted user hive for: $TargetUser" "Info"
-    } catch {
-        Log "Failed to load user hive at ${UserHivePath}: $_" "Critical"
-        exit 1
+if ($TargetUser -and $TargetUser -ne $CurrentUser) {
+    $LoadedHiveRoot = Get-LoadedUserHiveRoot -UserName $TargetUser
+    if ($LoadedHiveRoot) {
+        $HKCU = $LoadedHiveRoot
+        Log "Using already-loaded registry hive for: $TargetUser" "Info"
+    } else {
+        $HKCU = "Registry::$MountKey"
+
+        # Only mount if not already mounted
+        if (-not (Test-Path $HKCU)) {
+            try {
+                reg load $MountKey $UserHivePath | Out-Null
+                $MountedHive = $true
+                Log "Mounted user hive for: $TargetUser" "Info"
+            } catch {
+                Log "Failed to load user hive at ${UserHivePath}: $_" "Critical"
+                exit 1
+            }
+        }
     }
+} else {
+    Log "Using live HKCU for current user: $TargetUser" "Info"
 }
 
 # ───── User-space Registry Cleanup ─────
@@ -360,7 +410,7 @@ if (-not $RetryOnly -and ($FailedPrinters -or $FailedGhosts)) {
 
 
 # ───── Cleanup Mounted Hive ─────
-if ($HKCU -eq "Registry::$MountKey") {
+if ($MountedHive) {
     try {
         reg unload $MountKey | Out-Null
         Log "Unmounted hive for $TargetUser" "Debug"

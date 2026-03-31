@@ -182,10 +182,16 @@ function Start-PrinterExorcismSession {
     Log "Launching Phase 1 with args: $($argList -join ' ')" Debug
 
     Write-Host "Starting Phase 1 (user mode)..." -ForegroundColor Cyan
-    Start-Process powershell.exe -ArgumentList $argList -WindowStyle Hidden -Wait
+    $phase1Process = Start-Process powershell.exe -ArgumentList $argList -WindowStyle Hidden -Wait -PassThru
+
+    if (-not (Test-Path $StatusPath) -and $phase1Process.ExitCode -ne 0) {
+        Log "Phase 1 exited before writing a status file. Exit code: $($phase1Process.ExitCode)" Critical
+        Write-Host "Phase 1 failed before writing a status file. Exit code: $($phase1Process.ExitCode)" -ForegroundColor Red
+        return 1
+    }
 
     if (-not (Wait-ForStatusFile)) {
-        Log "Phase 1 failed or timed out waiting for status file." Critical
+        Log "Phase 1 failed or timed out waiting for status file. Exit code: $($phase1Process.ExitCode)" Critical
         Write-Host "Phase 1 timeout. No status received." -ForegroundColor Red
         return 1
     }
