@@ -16,7 +16,7 @@ param (
     [switch]$JSON
 )
 
-# ─── Import Shared Logger ──────────────────────────────
+# Import Shared Logger
 . "$PSScriptRoot\..\Common.ps1"
 
 $LogPath = Join-Path $env:TEMP "PrinterDiscovery.log"
@@ -65,7 +65,7 @@ function Get-LoadedUserHiveRoot {
     return $null
 }
 
-# ─── Setup ─────────────────────────────────────────────
+# Setup
 $Mounted = $false
 $CurrentUser = $env:USERNAME
 if ($TargetUser -and $TargetUser -ne $CurrentUser) {
@@ -102,7 +102,7 @@ $Discovery = [ordered]@{
 
 Write-Host "`nPrinter Discovery for: $TargetUser" -ForegroundColor Cyan
 
-# ─── Registry Printer Keys ─────────────────────────────
+# Registry Printer Keys
 $paths = @(
     "Printers\Connections",
     "Printers\DevModePerUser",
@@ -122,7 +122,7 @@ foreach ($sub in $paths) {
     }
 }
 
-# ─── Default Printer ──────────────────────────────────
+# Default Printer
 $defaultKey = Join-Path $Root "Software\Microsoft\Windows NT\CurrentVersion\Windows"
 try {
     if (Test-Path $defaultKey) {
@@ -134,7 +134,7 @@ try {
     Log "Could not read default printer: $_" Warning
 }
 
-# ─── Get-WmiObject Results ─────────────────────────────
+# Get-WmiObject Results
 try {
     $Printers = Get-WmiObject -Class Win32_Printer
     Write-Host "`nWMI Printers:" -ForegroundColor Green
@@ -163,7 +163,7 @@ try {
     Log "Failed to get printers from WMI: $_" Warning
 }
 
-# ─── Get-Printer (if available) ───────────────────────
+# Get-Printer (if available)
 try {
     $allPrinters = Get-Printer
     Write-Host "`nGet-Printer Results:" -ForegroundColor Blue
@@ -195,14 +195,14 @@ try {
     Log "Get-Printer failed: $_" Warning
 }
 
-# ─── Output JSON if requested ─────────────────────────
+# Output JSON if requested
 if ($JSON) {
     $jsonOut = Join-Path $env:TEMP "PrinterDiscovery.$($TargetUser).json"
     $Discovery | ConvertTo-Json -Depth 5 | Set-Content -Path $jsonOut -Encoding UTF8
     Write-Host "`nDiscovery saved to: $jsonOut" -ForegroundColor Gray
 }
 
-# ─── Cleanup ──────────────────────────────────────────
+# Cleanup
 if ($Mounted) {
     reg unload $MountPoint | Out-Null
     Write-Host "`nUnmounted user hive: $TargetUser" -ForegroundColor DarkGray

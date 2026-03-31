@@ -23,7 +23,7 @@ enum LogVerbosity {
     Debug = 3
 }
 
-# ───── Import shared log system ─────
+# Import shared log system
     try {
         . "$PSScriptRoot\..\Common.ps1"
     } catch {
@@ -31,7 +31,7 @@ enum LogVerbosity {
         return 100
     }
 
-# ───── Config ─────
+# Config
 $BuiltinPrinters = @(
     "Microsoft Print to PDF", "Microsoft XPS Document Writer",
     "Fax", "OneNote for Windows 10", "OneNote (Desktop)", "Adobe PDF"
@@ -111,7 +111,7 @@ function Remove-HKLMPrinterConnections {
     $regBase = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Print\Connections"
     if (Test-Path $regBase) {
         Get-ChildItem -Path $regBase | ForEach-Object {
-            Log "🗑️  Removing: $($_.Name)" "Info"
+            Log "Removing: $($_.Name)" "Info"
             Remove-Item -Path $_.PsPath -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
@@ -120,11 +120,11 @@ function Remove-HKLMPrinterConnections {
     Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers" |
         Where-Object { $_.PSChildName -match "Copy|PPO|Front" } |
         ForEach-Object {
-            Log "🪓 Removing ghost printer: $($_.PSChildName)" "Info"
+            Log "Removing ghost printer: $($_.PSChildName)" "Info"
             Remove-Item -Path $_.PsPath -Recurse -Force -ErrorAction SilentlyContinue
         }
 
-    Log "🔁 Restarting Print Spooler..." "Info"
+    Log "Restarting Print Spooler..." "Info"
     Restart-Service spooler -Force
 }
 
@@ -166,7 +166,7 @@ $CleanedGhosts   = @()
 $FailedPrinters = @()
 $FailedGhosts = @()
 
-# ───── Registry Context ─────
+# Registry Context
 $CurrentUser = $env:USERNAME
 $UserHivePath = "C:\Users\$TargetUser\NTUSER.DAT"
 $MountKey = "HKU\TempUserHive"
@@ -197,7 +197,7 @@ if ($TargetUser -and $TargetUser -ne $CurrentUser) {
     Log "Using live HKCU for current user: $TargetUser" "Info"
 }
 
-# ───── User-space Registry Cleanup ─────
+# User-space Registry Cleanup
 if (-not $RetryOnly) {
     Log "Removing user-space printer registry entries..." "Info"
     $UserRegPaths = @(
@@ -254,7 +254,7 @@ if (-not $RetryOnly) {
             $Printers = Get-WmiObject -Query "Select * from Win32_Printer"
             if ($BuiltinPrinters -notcontains $deviceName -and ($Printers.Name -notcontains $deviceName)) {
                 Remove-ItemProperty -Path $DefaultKey -Name "Device"
-                Log "🧹 Removed invalid default printer: $deviceName" "Info"
+                Log "Removed invalid default printer: $deviceName" "Info"
             } else {
                 Log "Default printer is valid: $deviceName" "Debug"
             }
@@ -264,7 +264,7 @@ if (-not $RetryOnly) {
     }
 }
 
-# ───── WMI Printer Cleanup ─────
+# WMI Printer Cleanup
 $Printers = Get-WmiObject -Query "Select * from Win32_Printer"
 foreach ($printer in $Printers) {
     if ($BuiltinPrinters -notcontains $printer.Name) {
@@ -292,16 +292,16 @@ foreach ($printer in $Printers) {
     }
 }
 
-# ───── Ghost printer detection deferral ─────
+# Ghost printer detection deferral
 if (-not $RetryOnly -and -not $IsAdmin) {
     $FailedGhosts += "_DEFER_GHOST_CLEANUP_"
     Log "Skipped ghost detection: elevation required. Scheduling retry..." "Warning"
 }
 
-# ───── PnP Ghost Detection and Cleanup ─────
+# PnP Ghost Detection and Cleanup
 if ($IsAdmin -or $RetryOnly) {
     try {
-        Write-Verbose "🔍 Enumerating printers via Get-Printer..."
+        Write-Verbose "Enumerating printers via Get-Printer..."
         $AllPrinters = Get-Printer -ErrorAction Stop
     }
     catch {
@@ -371,16 +371,16 @@ if ($IsAdmin -or $RetryOnly) {
     }
 }
 
-# ───── HKLM Printer Connection Cleanup ─────
+# HKLM Printer Connection Cleanup
 if ($IsAdmin) {
     Remove-HKLMPrinterConnections
 }
 
-# ───── Write status for this phase ─────
+# Write status for this phase
 $phaseNum = if ($RetryOnly) { 2 } else { 1 }
 Write-StatusJson -Printers $FailedPrinters -Ghosts $FailedGhosts -CleanedPrinters $CleanedPrinters -CleanedGhosts $CleanedGhosts -Phase $phaseNum
 
-# ───── Elevation Retry Phase ─────
+# Elevation Retry Phase
 if (-not $RetryOnly -and ($FailedPrinters -or $FailedGhosts)) {
     $scriptPath = $MyInvocation.MyCommand.Definition
     $printerArg = ($FailedPrinters -join '|')
@@ -395,7 +395,7 @@ if (-not $RetryOnly -and ($FailedPrinters -or $FailedGhosts)) {
         '-RetryGhosts',    "`"$ghostArg`""
     )
 
-    Log "Some cleanup failed. Relaunching with elevation to retry targeted steps…" "Warning"
+    Log "Some cleanup failed. Relaunching with elevation to retry targeted steps..." "Warning"
     Log "Elevation Command: powershell.exe $($argsList -join ' ')" "Debug"
 
     $p = Start-Process -FilePath powershell.exe `
@@ -410,7 +410,7 @@ if (-not $RetryOnly -and ($FailedPrinters -or $FailedGhosts)) {
 }
 
 
-# ───── Cleanup Mounted Hive ─────
+# Cleanup Mounted Hive
 if ($MountedHive) {
     try {
         reg unload $MountKey | Out-Null
@@ -420,5 +420,5 @@ if ($MountedHive) {
     }
 }
 
-# ───── Announce Finish ─────
-Log "✅ Printer cleanup complete for user: $TargetUser" "Info"
+# Announce Finish
+Log "Printer cleanup complete for user: $TargetUser" "Info"

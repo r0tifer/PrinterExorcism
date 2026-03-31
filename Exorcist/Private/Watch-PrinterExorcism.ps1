@@ -23,7 +23,7 @@ function Start-PrinterExorcismSession {
         Debug = 3
     }
 
-    # ───── Import shared log system ─────
+    # Import shared log system
     try {
         . "$PSScriptRoot\..\Common.ps1"
     } catch {
@@ -43,18 +43,18 @@ function Start-PrinterExorcismSession {
 
     function Output-PhaseSummary($phase, $status) {
         Write-Host ""
-        Write-Host "📦 Phase $phase cleanup summary for: $($status.user)" -ForegroundColor Cyan
-        Write-Host "   🖨  Printers cleaned:   $($status.cleaned_printers -join ', ')" -ForegroundColor Green
-        Write-Host "   ❌ Printers failed:    $($status.failed_printers -join ', ')" -ForegroundColor Red
-        Write-Host "   👻 Ghosts detected:    $($status.cleaned_ghosts -join ', ')" -ForegroundColor Green
-        Write-Host "   ☠️  Ghosts failed:      $($status.failed_ghosts -join ', ')" -ForegroundColor Red
+        Write-Host "Phase $phase cleanup summary for: $($status.user)" -ForegroundColor Cyan
+        Write-Host "   Printers cleaned:   $($status.cleaned_printers -join ', ')" -ForegroundColor Green
+        Write-Host "   Printers failed:    $($status.failed_printers -join ', ')" -ForegroundColor Red
+        Write-Host "   Ghosts detected:    $($status.cleaned_ghosts -join ', ')" -ForegroundColor Green
+        Write-Host "   Ghosts failed:      $($status.failed_ghosts -join ', ')" -ForegroundColor Red
         Write-Host ""
 
-        Log "📦 Phase $phase cleanup summary for user: $($status.user)" Info
-        Log "🖨  Printers cleaned:   $($status.cleaned_printers -join ', ')" Info
-        Log "❌ Printers failed:    $($status.failed_printers -join ', ')" Warning
-        Log "👻 Ghosts detected:    $($status.cleaned_ghosts -join ', ')" Info
-        Log "☠️  Ghosts failed:      $($status.failed_ghosts -join ', ')" Warning
+        Log "Phase $phase cleanup summary for user: $($status.user)" Info
+        Log "Printers cleaned:   $($status.cleaned_printers -join ', ')" Info
+        Log "Printers failed:    $($status.failed_printers -join ', ')" Warning
+        Log "Ghosts detected:    $($status.cleaned_ghosts -join ', ')" Info
+        Log "Ghosts failed:      $($status.failed_ghosts -join ', ')" Warning
     }
 
     function Invoke-PrinterDiscovery {
@@ -73,7 +73,7 @@ function Start-PrinterExorcismSession {
         if ($TargetUser) { $args += @("-TargetUser", "`"$TargetUser`"") }
         if ($JSON)       { $args += "-JSON" }
 
-        Write-Host "🔍 Running printer discovery..." -ForegroundColor Cyan
+        Write-Host "Running printer discovery..." -ForegroundColor Cyan
         & $DiscoveryScript @args
         return 0
     }
@@ -167,7 +167,7 @@ function Start-PrinterExorcismSession {
 
     Log "Watcher initiated with user-mode run of PrinterExorcist.ps1..." Info
 
-    # ─── Handle Discovery Mode ─────────────────────────────
+    # Handle Discovery Mode
     if ($JSON) {
         return Invoke-PrinterDiscovery -TargetUser:$TargetUser -JSON:$JSON
     }
@@ -277,10 +277,10 @@ function Start-PrinterExorcismSession {
         $innerArgsString = $innerArgsList -join ' '
         $OrigLocalAppData = $env:LOCALAPPDATA
 
-        Log "Phase 2 required - launching elevated (targeting user: $TargetUser)…" Info
+        Log "Phase 2 required - launching elevated (targeting user: $TargetUser)..." Info
         Log "Command: powershell.exe -NoProfile -ExecutionPolicy Bypass -Command & { `$env:LOCALAPPDATA = '$OrigLocalAppData'; & `"$PrinterScript`" $innerArgsString }" Debug
 
-        Write-Host "Phase 2 required - launching elevated (targeting user: $TargetUser)…" -ForegroundColor Yellow
+        Write-Host "Phase 2 required - launching elevated (targeting user: $TargetUser)..." -ForegroundColor Yellow
         $command = "& { `$env:LOCALAPPDATA = '$OrigLocalAppData'; & `"$PrinterScript`" $innerArgsString }"
         Start-Process -FilePath 'powershell.exe' `
             -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-Command',$command `

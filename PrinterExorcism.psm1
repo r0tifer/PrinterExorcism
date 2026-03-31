@@ -5,7 +5,7 @@
     Debug = 3
 }
 
-# ─── Load internal helper scripts ───
+# Load internal helper scripts
 $privatePath = Join-Path $PSScriptRoot 'Exorcist\Private'
 $commonPath = Join-Path $PSScriptRoot 'Exorcist'
 
@@ -99,7 +99,7 @@ function Make-PrintersSuffer {
     .DESCRIPTION
         This function provides a humorous wrapper around Invoke-PrinterExorcism with 
         dramatic CLI output. Designed for internal use, demos, or situations when you 
-        truly want to make the printers suffer — and want everyone to know it.
+        truly want to make the printers suffer - and want everyone to know it.
 
     .PARAMETER FullCleanup
         Performs a full printer cleanup, including registry entries and WMI-printer mappings.
@@ -139,19 +139,19 @@ function Make-PrintersSuffer {
 
         $FullCleanup = $true
         $Automated   = $true
-        Write-Host "🎯 No flags? Defaulting to FULL AUTO-EXORCISM MODE." -ForegroundColor Red
+        Write-Host "No flags? Defaulting to FULL AUTO-EXORCISM MODE." -ForegroundColor Red
         Start-Sleep -Milliseconds 600
     }
 
-    Write-Host "`n🧪 Brewing holy water..."
+    Write-Host "`nBrewing holy water..."
     Start-Sleep -Milliseconds 500
-    Write-Host "📜 Reading the sacred Driver Uninstallation Scrolls..."
+    Write-Host "Reading the sacred Driver Uninstallation Scrolls..."
     Start-Sleep -Milliseconds 500
-    Write-Host "🗡  Sharpening registry-cleaving axe..."
+    Write-Host "Sharpening registry-cleaving axe..."
     Start-Sleep -Milliseconds 700
-    Write-Host "💾 Mounting the blessed USB of banishment..."
+    Write-Host "Mounting the blessed USB of banishment..."
     Start-Sleep -Milliseconds 700
-    Write-Host "`n🔥 Initiating exorcism protocol...`n" -ForegroundColor Yellow
+    Write-Host "`nInitiating exorcism protocol...`n" -ForegroundColor Yellow
 
     $invokeParams = @{
         Verbosity = $Verbosity
@@ -175,7 +175,7 @@ function Show-PrinterDiscovery {
     .DESCRIPTION
         This function wraps the standalone Discover-Printers.ps1 script for use within the module.
         If -JSON is set, it emits structured JSON output suitable for logging or pipelines.
-        No changes are made to the system — this is a safe, read-only discovery routine.
+        No changes are made to the system - this is a safe, read-only discovery routine.
 
     .PARAMETER TargetUser
         Specifies the user whose registry hive should be mounted and scanned for printer artifacts.
@@ -240,7 +240,7 @@ function Start-SystemWidePrinterCleanup {
 
     foreach ($user in $Users) {
         $Target = $user.Name
-        Write-Host "`n🧼 Running cleanup for user: $Target" -ForegroundColor Cyan
+        Write-Host "`nRunning cleanup for user: $Target" -ForegroundColor Cyan
         $script = Join-Path $PSScriptRoot "Exorcist\Private\PrinterExorcist.ps1"
         $args = @(
             '-NoProfile',
@@ -256,12 +256,12 @@ function Start-SystemWidePrinterCleanup {
                                  -ArgumentList $args `
                                  -NoNewWindow -Wait -PassThru
         if ($process.ExitCode -ne 0) {
-            Write-Host "⚠️ Cleanup failed for $Target (exit $($process.ExitCode))" -ForegroundColor Red
+            Write-Host "Cleanup failed for $Target (exit $($process.ExitCode))" -ForegroundColor Red
         }
     }
 
     # Global cleanup
-    Write-Host "`n🗑  Performing HKLM and WMI printer cleanup..." -ForegroundColor Cyan
+    Write-Host "`nPerforming HKLM and WMI printer cleanup..." -ForegroundColor Cyan
     $null = & "$PSScriptRoot\Exorcist\Private\PrinterExorcist.ps1" -Automated -FullCleanup -RetryOnly -Verbosity $Verbosity
 }
 
