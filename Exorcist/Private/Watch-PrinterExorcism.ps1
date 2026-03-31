@@ -104,6 +104,8 @@ function Start-PrinterExorcismSession {
 
     function Build-ArgList {
         $args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PrinterScript`"")
+        $args += @("-StatusPath", "`"$StatusPath`"")
+        $args += @("-LogPath", "`"$LogPath`"")
         if ($FullCleanup)    { $args += "-FullCleanup" }
         if ($CompareGPO)     { $args += "-CompareGPO" }
         if ($Automated)      { $args += "-Automated" }
@@ -262,7 +264,11 @@ function Start-PrinterExorcismSession {
             Log "No -TargetUser provided; defaulting to current user: $TargetUser" Warning
         }
 
-        $innerArgsList = @('-RetryOnly')
+        $innerArgsList = @(
+            '-RetryOnly',
+            '-StatusPath', "`"$StatusPath`"",
+            '-LogPath', "`"$LogPath`""
+        )
         if ($status.failed_printers.Count -gt 0) {
             $innerArgsList += '-RetryPrinters', "`"$($status.failed_printers -join '|')`""
         }
@@ -282,14 +288,32 @@ function Start-PrinterExorcismSession {
 
         Write-Host "Phase 2 required - launching elevated (targeting user: $TargetUser)..." -ForegroundColor Yellow
         $command = "& { `$env:LOCALAPPDATA = '$OrigLocalAppData'; & `"$PrinterScript`" $innerArgsString }"
-        Start-Process -FilePath 'powershell.exe' `
+        $phase2Process = Start-Process -FilePath 'powershell.exe' `
             -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-Command',$command `
             -Verb RunAs -WindowStyle Hidden `
-            -PassThru -Wait | Out-Null
+            -PassThru -Wait
+
+        if (-not (Test-Path $StatusPath) -and $phase2Process.ExitCode -ne 0) {
+            Log "Phase 2 exited before writing a status file. Exit code: $($phase2Process.ExitCode)" Critical
+            Write-Host "Phase 2 failed before writing a status file. Exit code: $($phase2Process.ExitCode)" -ForegroundColor Red
+            if (Test-Path $LogPath) {
+                Write-Host "Phase 2 log tail:" -ForegroundColor Yellow
+                Get-Content -Path $LogPath -ErrorAction SilentlyContinue | Select-Object -Last 20 | ForEach-Object {
+                    Write-Host $_ -ForegroundColor DarkYellow
+                }
+            }
+            return 3
+        }
 
         if (-not (Wait-ForStatusFile)) {
-            Log "Phase 2 timeout - status file never updated." Critical
+            Log "Phase 2 timeout - status file never updated. Exit code: $($phase2Process.ExitCode)" Critical
             Write-Host "Phase 2 timeout - no updated status received." -ForegroundColor Red
+            if (Test-Path $LogPath) {
+                Write-Host "Phase 2 log tail:" -ForegroundColor Yellow
+                Get-Content -Path $LogPath -ErrorAction SilentlyContinue | Select-Object -Last 20 | ForEach-Object {
+                    Write-Host $_ -ForegroundColor DarkYellow
+                }
+            }
             return 3
         }
 

@@ -11,6 +11,8 @@ param(
     [string]$RetryGhosts,
     [string]$TargetUser,
     [switch]$RetryOnly,
+    [string]$StatusPath,
+    [string]$LogPath,
     [ValidateSet("Info", "Warning", "Critical", "Debug")]
     [string]$Verbosity = "Critical"
 
@@ -37,21 +39,38 @@ $BuiltinPrinters = @(
     "Fax", "OneNote for Windows 10", "OneNote (Desktop)", "Adobe PDF"
 )
 
-if ($Automated) {
-    # Local path avoids UNC prompts
-    $DesktopPath = Join-Path $env:LOCALAPPDATA "PrinterExorcist"
-    if (-not (Test-Path $DesktopPath)) {
-        New-Item -ItemType Directory -Path $DesktopPath -Force | Out-Null
+if (-not $LogPath -or -not $StatusPath) {
+    if ($Automated) {
+        # Local path avoids UNC prompts
+        $OutputDir = Join-Path $env:LOCALAPPDATA "PrinterExorcist"
+        if (-not (Test-Path $OutputDir)) {
+            New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+        }
+    } else {
+        $OutputDir = [Environment]::GetFolderPath("Desktop")
+        if (-not (Test-Path $OutputDir)) {
+            $OutputDir = Join-Path $env:USERPROFILE "Documents"
+        }
     }
-} else {
-    $DesktopPath = [Environment]::GetFolderPath("Desktop")
-    if (-not (Test-Path $DesktopPath)) {
-        $DesktopPath = Join-Path $env:USERPROFILE "Documents"
+
+    if (-not $LogPath) {
+        $LogPath = Join-Path $OutputDir "PrinterCleanup.log"
+    }
+    if (-not $StatusPath) {
+        $StatusPath = Join-Path $OutputDir "PrinterCleanup.status.json"
     }
 }
 
-$LogPath    = Join-Path $DesktopPath "PrinterCleanup.log"
-$StatusPath = Join-Path $DesktopPath "PrinterCleanup.status.json"
+$OutputDirs = @($LogPath, $StatusPath) |
+    Where-Object { $_ } |
+    ForEach-Object { Split-Path $_ -Parent } |
+    Sort-Object -Unique
+
+foreach ($dir in $OutputDirs) {
+    if ($dir -and -not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+}
 
 # Define default console logging
 $ConsoleLevel = [LogVerbosity]::Info
