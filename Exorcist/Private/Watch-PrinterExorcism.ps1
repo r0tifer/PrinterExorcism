@@ -41,20 +41,51 @@ function Start-PrinterExorcismSession {
         Log-PrinterEvent -msg $Message -Level $Level.ToString() -LogPath $LogPath -Verbosity $ConsoleLevel
     }
 
+    function Format-StatusItems {
+        param (
+            [string[]]$Items
+        )
+
+        if ($Items -and $Items.Count -gt 0) {
+            return ($Items -join ', ')
+        }
+
+        return "(none)"
+    }
+
     function Output-PhaseSummary($phase, $status) {
+        $cleanedPrinters = Format-StatusItems $status.cleaned_printers
+        $failedPrinters = Format-StatusItems $status.failed_printers
+        $cleanedGhosts = Format-StatusItems $status.cleaned_ghosts
+        $ghostCleanupPending = $status.failed_ghosts -contains "_DEFER_GHOST_CLEANUP_"
+        $actualFailedGhosts = @($status.failed_ghosts | Where-Object { $_ -ne "_DEFER_GHOST_CLEANUP_" })
+        $failedGhosts = Format-StatusItems $actualFailedGhosts
+
+        $printerFailureColor = if ($status.failed_printers.Count -gt 0) { 'Red' } else { 'DarkGray' }
+        $ghostFailureColor = if ($actualFailedGhosts.Count -gt 0) { 'Red' } else { 'DarkGray' }
+
+        $printerFailureLevel = if ($status.failed_printers.Count -gt 0) { [LogVerbosity]::Warning } else { [LogVerbosity]::Info }
+        $ghostFailureLevel = if ($actualFailedGhosts.Count -gt 0) { [LogVerbosity]::Warning } else { [LogVerbosity]::Info }
+
         Write-Host ""
         Write-Host "Phase $phase cleanup summary for: $($status.user)" -ForegroundColor Cyan
-        Write-Host "   Printers cleaned:   $($status.cleaned_printers -join ', ')" -ForegroundColor Green
-        Write-Host "   Printers failed:    $($status.failed_printers -join ', ')" -ForegroundColor Red
-        Write-Host "   Ghosts detected:    $($status.cleaned_ghosts -join ', ')" -ForegroundColor Green
-        Write-Host "   Ghosts failed:      $($status.failed_ghosts -join ', ')" -ForegroundColor Red
+        Write-Host "   Printers cleaned:   $cleanedPrinters" -ForegroundColor Green
+        Write-Host "   Printers failed:    $failedPrinters" -ForegroundColor $printerFailureColor
+        Write-Host "   Ghosts detected:    $cleanedGhosts" -ForegroundColor Green
+        Write-Host "   Ghosts failed:      $failedGhosts" -ForegroundColor $ghostFailureColor
+        if ($ghostCleanupPending) {
+            Write-Host "   Ghost cleanup pending admin phase: yes" -ForegroundColor Yellow
+        }
         Write-Host ""
 
         Log "Phase $phase cleanup summary for user: $($status.user)" Info
-        Log "Printers cleaned:   $($status.cleaned_printers -join ', ')" Info
-        Log "Printers failed:    $($status.failed_printers -join ', ')" Warning
-        Log "Ghosts detected:    $($status.cleaned_ghosts -join ', ')" Info
-        Log "Ghosts failed:      $($status.failed_ghosts -join ', ')" Warning
+        Log "Printers cleaned:   $cleanedPrinters" Info
+        Log "Printers failed:    $failedPrinters" $printerFailureLevel
+        Log "Ghosts detected:    $cleanedGhosts" Info
+        Log "Ghosts failed:      $failedGhosts" $ghostFailureLevel
+        if ($ghostCleanupPending) {
+            Log "Ghost cleanup pending admin phase: yes" Info
+        }
     }
 
     function Invoke-PrinterDiscovery {

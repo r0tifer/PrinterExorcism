@@ -125,6 +125,38 @@ function Get-LoadedUserHiveRoot {
     return $null
 }
 
+function Get-UserSid {
+    param(
+        [Parameter(Mandatory)]
+        [string]$UserName
+    )
+
+    $profileList = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList"
+
+    try {
+        $profile = Get-ChildItem -Path $profileList -ErrorAction Stop |
+            ForEach-Object {
+                $props = Get-ItemProperty -Path $_.PSPath -Name ProfileImagePath -ErrorAction SilentlyContinue
+                [pscustomobject]@{
+                    Sid = $_.PSChildName
+                    ProfileImagePath = $props.ProfileImagePath
+                }
+            } |
+            Where-Object {
+                $_.ProfileImagePath -and (Split-Path $_.ProfileImagePath -Leaf) -ieq $UserName
+            } |
+            Select-Object -First 1
+
+        if ($profile) {
+            return $profile.Sid
+        }
+    } catch {
+        Log "Failed to resolve SID for ${UserName}: $_" "Debug"
+    }
+
+    return $null
+}
+
 function Normalize-PrinterServerName {
     param(
         [string]$ServerName
@@ -237,6 +269,130 @@ function New-PrinterCountMap {
     return New-Object 'System.Collections.Generic.Dictionary[string,int]' ([System.StringComparer]::OrdinalIgnoreCase)
 }
 
+function Remove-ClientSideRenderingConnections {
+    param(
+        [string]$UserSid,
+        [bool]$CompareGPO,
+        [System.Collections.Generic.HashSet[string]]$AllowedGpoPrinterKeys
+    )
+
+    if ([string]::IsNullOrWhiteSpace($UserSid)) {
+        return
+    }
+
+    $csrConnectionsPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Print\Providers\Client Side Rendering Print Provider\$UserSid\Printers\Connections"
+    if (-not (Test-Path $csrConnectionsPath)) {
+        Log "No Client Side Rendering connection cache found for SID $UserSid" "Debug"
+        return
+    }
+
+    foreach ($connection in Get-ChildItem -Path $csrConnectionsPath -ErrorAction SilentlyContinue) {
+        $info = Get-PrinterConnectionInfo -Name $connection.PSChildName
+        $keep = $false
+        if ($CompareGPO -and $info -and $info.CanonicalKey) {
+            $keep = $AllowedGpoPrinterKeys.Contains($info.CanonicalKey)
+        }
+
+        if ($keep) {
+            Log "Keeping GPO-managed CSR connection: $($connection.PSChildName)" "Debug"
+            continue
+        }
+
+        try {
+            Remove-Item -Path $connection.PSPath -Recurse -Force -ErrorAction Stop
+            Log "Removed CSR printer connection cache: $($connection.PSChildName)" "Info"
+        } catch {
+            Log "Failed to remove CSR printer connection cache: $($connection.PSChildName) - $_" "Warning"
+        }
+    }
+}
+
+function Remove-StalePrintEnumDevices {
+    param(
+        [string[]]$ActivePrinterNames,
+        [string[]]$BuiltInPrinterNames
+    )
+
+    $printEnumPath = "HKLM:\SYSTEM\CurrentControlSet\Enum\SWD\PRINTENUM"
+    if (-not (Test-Path $printEnumPath)) {
+        Log "No SWD\\PRINTENUM device cache found." "Debug"
+        return
+    }
+
+    $activeNameSet = New-PrinterKeySet
+    $activeCanonicalKeySet = New-PrinterKeySet
+    foreach ($printerName in $ActivePrinterNames) {
+        if ([string]::IsNullOrWhiteSpace($printerName)) {
+            continue
+        }
+
+        $null = $activeNameSet.Add($printerName)
+        $info = Get-PrinterConnectionInfo -Name $printerName
+        if ($info -and $info.CanonicalKey) {
+            $null = $activeCanonicalKeySet.Add($info.CanonicalKey)
+            if ($info.PreferredDisplayName) {
+                $null = $activeNameSet.Add($info.PreferredDisplayName)
+            }
+            if ($info.PreferredPathName) {
+                $null = $activeNameSet.Add($info.PreferredPathName)
+            }
+        }
+    }
+
+    $removedAny = $false
+
+    foreach ($device in Get-ChildItem -Path $printEnumPath -ErrorAction SilentlyContinue) {
+        $props = Get-ItemProperty -Path $device.PSPath -ErrorAction SilentlyContinue
+        $friendlyName = $props.FriendlyName
+        if ([string]::IsNullOrWhiteSpace($friendlyName)) {
+            continue
+        }
+
+        if ($BuiltInPrinterNames -contains $friendlyName) {
+            continue
+        }
+
+        $deviceInfo = Get-PrinterConnectionInfo -Name $friendlyName
+        $isActive = $activeNameSet.Contains($friendlyName)
+        if (-not $isActive -and $deviceInfo -and $deviceInfo.CanonicalKey) {
+            $isActive = $activeCanonicalKeySet.Contains($deviceInfo.CanonicalKey)
+        }
+
+        if ($isActive) {
+            Log "Keeping active PRINTENUM device: $friendlyName" "Debug"
+            continue
+        }
+
+        $instanceId = "SWD\PRINTENUM\$($device.PSChildName)"
+        $output = & pnputil.exe /remove-device $instanceId /force 2>&1
+        $exitCode = $LASTEXITCODE
+
+        if ($exitCode -eq 0 -or $exitCode -eq 3010) {
+            Log "Removed stale PRINTENUM device: $friendlyName ($instanceId)" "Info"
+            $script:CleanedGhosts += $friendlyName
+            $removedAny = $true
+            if ($exitCode -eq 3010) {
+                Log "PRINTENUM device removal requested reboot: $friendlyName" "Warning"
+            }
+        } else {
+            $message = if ($output) { ($output | Out-String).Trim() } else { "exit $exitCode" }
+            Log "Failed to remove stale PRINTENUM device: $friendlyName ($instanceId) - $message" "Warning"
+            $script:FailedGhosts += $friendlyName
+        }
+    }
+
+    if ($removedAny) {
+        $scanOutput = & pnputil.exe /scan-devices 2>&1
+        $scanExitCode = $LASTEXITCODE
+        if ($scanExitCode -eq 0) {
+            Log "Triggered device rescan after PRINTENUM cleanup." "Info"
+        } else {
+            $message = if ($scanOutput) { ($scanOutput | Out-String).Trim() } else { "exit $scanExitCode" }
+            Log "Device rescan after PRINTENUM cleanup reported: $message" "Warning"
+        }
+    }
+}
+
 function Remove-HKLMPrinterConnections {
     Log "Clearing HKLM printer connection GUIDs..." "Info"
 
@@ -332,6 +488,7 @@ if ($TargetUser -and $TargetUser -ne $CurrentUser) {
 $GpoPrinterConnections = @()
 $AllowedGpoPrinterKeys = New-PrinterKeySet
 $PreferredGpoPrinterNames = New-PrinterKeySet
+$TargetUserSid = Get-UserSid -UserName $TargetUser
 if ($CompareGPO) {
     $GpoPrinterConnections = Get-GpoPrinterConnections -UserRegistryRoot $HKCU
     foreach ($connection in $GpoPrinterConnections) {
@@ -480,6 +637,8 @@ if ($IsAdmin -or $RetryOnly) {
         $AllPrinters = @()
     }
 
+    Remove-ClientSideRenderingConnections -UserSid $TargetUserSid -CompareGPO:$CompareGPO -AllowedGpoPrinterKeys $AllowedGpoPrinterKeys
+
     $GhostPatterns = @(
         'Copy*',
         'PPO*',
@@ -559,6 +718,9 @@ if ($IsAdmin -or $RetryOnly) {
     else {
         Log "No removable printer connections detected by Get-Printer." "Info"
     }
+
+    $ActivePrinterNames = @($AllPrinters | Select-Object -ExpandProperty Name)
+    Remove-StalePrintEnumDevices -ActivePrinterNames $ActivePrinterNames -BuiltInPrinterNames $BuiltinPrinters
 
     $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers"
     try {
