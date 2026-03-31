@@ -125,6 +125,118 @@ function Get-LoadedUserHiveRoot {
     return $null
 }
 
+function Normalize-PrinterServerName {
+    param(
+        [string]$ServerName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ServerName)) {
+        return $null
+    }
+
+    $normalized = $ServerName.Trim().TrimStart('\')
+    if ($normalized -match '^(?<host>[^\.]+)\..+$') {
+        $normalized = $Matches.host
+    }
+
+    return $normalized.ToLowerInvariant()
+}
+
+function Normalize-PrinterShareName {
+    param(
+        [string]$ShareName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ShareName)) {
+        return $null
+    }
+
+    return $ShareName.Trim().ToLowerInvariant()
+}
+
+function Get-PrinterConnectionInfo {
+    param(
+        [string]$Name
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        return $null
+    }
+
+    $value = $Name.Trim()
+    $server = $null
+    $share = $null
+
+    if ($value -match '^\\\\(?<server>[^\\]+)\\(?<share>.+)$') {
+        $server = $Matches.server
+        $share = $Matches.share
+    } elseif ($value -match '^,,(?<server>[^,]+),(?<share>.+)$') {
+        $server = $Matches.server
+        $share = $Matches.share
+    } elseif ($value -match '^(?<share>.+?)\s+on\s+(?<server>.+)$') {
+        $server = $Matches.server
+        $share = $Matches.share
+    }
+
+    if (-not $server -or -not $share) {
+        return $null
+    }
+
+    $serverShort = Normalize-PrinterServerName -ServerName $server
+    $shareNormalized = Normalize-PrinterShareName -ShareName $share
+    $canonicalKey = $null
+    if ($serverShort -and $shareNormalized) {
+        $canonicalKey = "$serverShort|$shareNormalized"
+    }
+
+    return [pscustomobject]@{
+        RawName              = $Name
+        Server               = $server.Trim()
+        ServerShort          = $serverShort
+        Share                = $share.Trim()
+        ShareNormalized      = $shareNormalized
+        CanonicalKey         = $canonicalKey
+        PreferredDisplayName = "$($share.Trim()) on $($server.Trim())"
+        PreferredPathName    = "\\$($server.Trim())\$($share.Trim())"
+    }
+}
+
+function Get-GpoPrinterConnections {
+    param(
+        [string]$UserRegistryRoot = "HKCU:"
+    )
+
+    $paths = @(
+        "$UserRegistryRoot\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\Connections",
+        "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\Print\Connections",
+        "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers\Connections"
+    ) | Select-Object -Unique
+
+    $results = @()
+    foreach ($path in $paths) {
+        if (-not (Test-Path $path)) {
+            continue
+        }
+
+        foreach ($item in Get-ChildItem -Path $path -ErrorAction SilentlyContinue) {
+            $info = Get-PrinterConnectionInfo -Name $item.PSChildName
+            if ($info) {
+                $results += $info
+            }
+        }
+    }
+
+    return $results
+}
+
+function New-PrinterKeySet {
+    return New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+}
+
+function New-PrinterCountMap {
+    return New-Object 'System.Collections.Generic.Dictionary[string,int]' ([System.StringComparer]::OrdinalIgnoreCase)
+}
+
 function Remove-HKLMPrinterConnections {
     Log "Clearing HKLM printer connection GUIDs..." "Info"
 
@@ -217,12 +329,35 @@ if ($TargetUser -and $TargetUser -ne $CurrentUser) {
     Log "Using live HKCU for current user: $TargetUser" "Info"
 }
 
+$GpoPrinterConnections = @()
+$AllowedGpoPrinterKeys = New-PrinterKeySet
+$PreferredGpoPrinterNames = New-PrinterKeySet
+if ($CompareGPO) {
+    $GpoPrinterConnections = Get-GpoPrinterConnections -UserRegistryRoot $HKCU
+    foreach ($connection in $GpoPrinterConnections) {
+        if ($connection.CanonicalKey) {
+            $null = $AllowedGpoPrinterKeys.Add($connection.CanonicalKey)
+        }
+        if ($connection.PreferredDisplayName) {
+            $null = $PreferredGpoPrinterNames.Add($connection.PreferredDisplayName)
+        }
+        if ($connection.PreferredPathName) {
+            $null = $PreferredGpoPrinterNames.Add($connection.PreferredPathName)
+        }
+    }
+
+    Log "Discovered $($AllowedGpoPrinterKeys.Count) GPO-managed printer connection(s)." "Info"
+}
+
 # User-space Registry Cleanup
 if (-not $RetryOnly) {
     Log "Removing user-space printer registry entries..." "Info"
     $UserRegPaths = @(
+        "$HKCU\\Printers\\ConvertUserDevModesCount",
         "$HKCU\\Printers\\DevModePerUser",
         "$HKCU\\Printers\\DevModes2",
+        "$HKCU\\Printers\\Defaults",
+        "$HKCU\\Printers\\Settings",
         "$HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Devices",
         "$HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\PrinterPorts"
     )
@@ -241,16 +376,22 @@ if (-not $RetryOnly) {
 
     $ConnectionsKey = "$HKCU\\Printers\\Connections"
     if ($CompareGPO) {
-        $PolicyKey = "$HKCU\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\Connections"
-        $Active = @(Get-ChildItem -Path $ConnectionsKey -ErrorAction SilentlyContinue | ForEach-Object { $_.PSChildName })
-        $Gpo = @(Get-ChildItem -Path $PolicyKey -ErrorAction SilentlyContinue | ForEach-Object { $_.PSChildName })
-        $ToRemove = $Active | Where-Object { $Gpo -notcontains $_ }
-        foreach ($conn in $ToRemove) {
+        $Active = @(Get-ChildItem -Path $ConnectionsKey -ErrorAction SilentlyContinue)
+        foreach ($conn in $Active) {
+            $info = Get-PrinterConnectionInfo -Name $conn.PSChildName
+            $keep = $false
+            if ($info -and $info.CanonicalKey) {
+                $keep = $AllowedGpoPrinterKeys.Contains($info.CanonicalKey)
+            }
+            if ($keep) {
+                Log "Keeping GPO-managed printer connection: $($conn.PSChildName)" "Debug"
+                continue
+            }
             try {
-                Remove-Item -Path (Join-Path $ConnectionsKey $conn) -Recurse -Force
-                Log "Removed non-GPO printer connection: $conn" "Info"
+                Remove-Item -Path $conn.PSPath -Recurse -Force
+                Log "Removed non-GPO printer connection: $($conn.PSChildName)" "Info"
             } catch {
-                Log "Failed to remove non-GPO connection: $conn" "Warning"
+                Log "Failed to remove non-GPO connection: $($conn.PSChildName)" "Warning"
             }
         }
     } else {
@@ -288,6 +429,12 @@ if (-not $RetryOnly) {
 $Printers = Get-WmiObject -Query "Select * from Win32_Printer"
 foreach ($printer in $Printers) {
     if ($BuiltinPrinters -notcontains $printer.Name) {
+        $printerInfo = Get-PrinterConnectionInfo -Name $printer.Name
+        $isGpoManagedPrinter = $false
+        if ($CompareGPO -and $printerInfo -and $printerInfo.CanonicalKey) {
+            $isGpoManagedPrinter = $AllowedGpoPrinterKeys.Contains($printerInfo.CanonicalKey)
+        }
+
         if ($RetryOnly) {
             if ($RetryPrinters -and ($RetryPrinters -split "\|") -contains $printer.Name) {
                 try {
@@ -298,6 +445,10 @@ foreach ($printer in $Printers) {
                 }
             }
         } else {
+            if ($CompareGPO -and $isGpoManagedPrinter) {
+                Log "Keeping GPO-managed printer: $($printer.Name)" "Debug"
+                continue
+            }
             try {
                 $printer.Delete() | Out-Null
                 Log "Removed printer: $($printer.Name)" "Info"
@@ -334,27 +485,79 @@ if ($IsAdmin -or $RetryOnly) {
         'PPO*',
         'Front Desk Main*'
     )
-    $FoundGhosts = @()
-    foreach ($pattern in $GhostPatterns) {
-        $FoundGhosts += $AllPrinters | Where-Object { $_.Name -like $pattern }
+    $CanonicalCounts = New-PrinterCountMap
+    foreach ($printer in $AllPrinters) {
+        $info = Get-PrinterConnectionInfo -Name $printer.Name
+        if ($info -and $info.CanonicalKey) {
+            if ($CanonicalCounts.ContainsKey($info.CanonicalKey)) {
+                $CanonicalCounts[$info.CanonicalKey] += 1
+            } else {
+                $CanonicalCounts[$info.CanonicalKey] = 1
+            }
+        }
     }
-    $FoundGhosts = $FoundGhosts | Sort-Object -Unique
+
+    $FoundGhosts = @()
+    foreach ($printer in $AllPrinters) {
+        if ($BuiltinPrinters -contains $printer.Name) {
+            continue
+        }
+
+        $printerInfo = Get-PrinterConnectionInfo -Name $printer.Name
+        $isPatternGhost = $false
+        foreach ($pattern in $GhostPatterns) {
+            if ($printer.Name -like $pattern) {
+                $isPatternGhost = $true
+                break
+            }
+        }
+
+        $isDuplicateConnection = $false
+        if ($printerInfo -and $printerInfo.CanonicalKey -and $CanonicalCounts.ContainsKey($printerInfo.CanonicalKey)) {
+            $isDuplicateConnection = $CanonicalCounts[$printerInfo.CanonicalKey] -gt 1
+        }
+
+        $isPreferredGpoName = $false
+        if ($CompareGPO -and $PreferredGpoPrinterNames.Count -gt 0) {
+            $isPreferredGpoName = $PreferredGpoPrinterNames.Contains($printer.Name)
+        }
+
+        $isGpoManagedPrinter = $false
+        if ($CompareGPO -and $printerInfo -and $printerInfo.CanonicalKey) {
+            $isGpoManagedPrinter = $AllowedGpoPrinterKeys.Contains($printerInfo.CanonicalKey)
+        }
+
+        $shouldRemove = $false
+        if ($FullCleanup) {
+            $shouldRemove = $true
+        } elseif ($CompareGPO) {
+            $shouldRemove = (-not $isGpoManagedPrinter) -or ($isDuplicateConnection -and -not $isPreferredGpoName)
+        } else {
+            $shouldRemove = $isPatternGhost -or $isDuplicateConnection
+        }
+
+        if ($shouldRemove) {
+            $FoundGhosts += $printer
+        }
+    }
+
+    $FoundGhosts = $FoundGhosts | Sort-Object Name -Unique
 
     if ($FoundGhosts.Count -gt 0) {
         foreach ($ghost in $FoundGhosts) {
             try {
                 Remove-Printer -Name $ghost.Name -ErrorAction Stop
-                Log "Removed ghost printer via Remove-Printer: $($ghost.Name)" "Info"
+                Log "Removed printer via Remove-Printer: $($ghost.Name)" "Info"
                 $CleanedGhosts += $ghost.Name
             }
             catch {
-                Log "Failed to remove ghost printer via Remove-Printer: $($ghost.Name) - $_" "Critical"
+                Log "Failed to remove printer via Remove-Printer: $($ghost.Name) - $_" "Critical"
                 $FailedGhosts += $ghost.Name
             }
         }
     }
     else {
-        Log "No ghost printers detected by Get-Printer." "Info"
+        Log "No removable printer connections detected by Get-Printer." "Info"
     }
 
     $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers"

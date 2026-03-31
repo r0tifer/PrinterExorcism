@@ -105,8 +105,11 @@ Write-Host "`nPrinter Discovery for: $TargetUser" -ForegroundColor Cyan
 # Registry Printer Keys
 $paths = @(
     "Printers\Connections",
+    "Printers\ConvertUserDevModesCount",
     "Printers\DevModePerUser",
     "Printers\DevModes2",
+    "Printers\Defaults",
+    "Printers\Settings",
     "Software\Microsoft\Windows NT\CurrentVersion\Devices",
     "Software\Microsoft\Windows NT\CurrentVersion\PrinterPorts",
     "Software\Policies\Microsoft\Windows NT\Printers\Connections"
