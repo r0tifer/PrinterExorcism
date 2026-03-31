@@ -387,6 +387,7 @@ if (-not $RetryOnly -and ($FailedPrinters -or $FailedGhosts)) {
     $ghostArg   = ($FailedGhosts   -join '|')
 
     $argsList   = @(
+        '-NoProfile',
         '-ExecutionPolicy', 'Bypass',
         '-File',           "`"$scriptPath`"",
         '-RetryOnly',

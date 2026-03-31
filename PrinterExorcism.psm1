@@ -243,6 +243,7 @@ function Start-SystemWidePrinterCleanup {
         Write-Host "`n🧼 Running cleanup for user: $Target" -ForegroundColor Cyan
         $script = Join-Path $PSScriptRoot "Exorcist\Private\PrinterExorcist.ps1"
         $args = @(
+            '-NoProfile',
             '-ExecutionPolicy', 'Bypass',
             '-File', "`"$script`"",
             '-TargetUser', "`"$Target`"",

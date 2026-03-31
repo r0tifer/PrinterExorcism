@@ -93,6 +93,8 @@ function Start-PrinterExorcismSession {
 
     $StatusPath = Join-Path $StatusDir 'PrinterCleanup.status.json'
     $LogPath    = Join-Path $StatusDir 'PrinterCleanup.log'
+    $Phase1StdOutPath = Join-Path $StatusDir 'PrinterCleanup.phase1.stdout.log'
+    $Phase1StdErrPath = Join-Path $StatusDir 'PrinterCleanup.phase1.stderr.log'
     $PrinterScript = Join-Path $PSScriptRoot 'PrinterExorcist.ps1'
 
     if (-not (Test-Path $PrinterScript)) {
@@ -101,7 +103,7 @@ function Start-PrinterExorcismSession {
     }
 
     function Build-ArgList {
-        $args = @("-ExecutionPolicy", "Bypass", "-File", "`"$PrinterScript`"")
+        $args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PrinterScript`"")
         if ($FullCleanup)    { $args += "-FullCleanup" }
         if ($CompareGPO)     { $args += "-CompareGPO" }
         if ($Automated)      { $args += "-Automated" }
@@ -177,15 +179,53 @@ function Start-PrinterExorcismSession {
         Remove-Item $StatusPath -Force
         Log "Removed old status file." Debug
     }
+    if (Test-Path $Phase1StdOutPath) {
+        Remove-Item $Phase1StdOutPath -Force
+    }
+    if (Test-Path $Phase1StdErrPath) {
+        Remove-Item $Phase1StdErrPath -Force
+    }
 
     $argList = Build-ArgList
     Log "Launching Phase 1 with args: $($argList -join ' ')" Debug
 
     Write-Host "Starting Phase 1 (user mode)..." -ForegroundColor Cyan
-    $phase1Process = Start-Process powershell.exe -ArgumentList $argList -WindowStyle Hidden -Wait -PassThru
+    $phase1Process = Start-Process powershell.exe `
+        -ArgumentList $argList `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $Phase1StdOutPath `
+        -RedirectStandardError $Phase1StdErrPath `
+        -Wait -PassThru
+
+    function Show-Phase1Diagnostics {
+        $streamsShown = $false
+
+        if (Test-Path $Phase1StdErrPath) {
+            $stderr = Get-Content -Path $Phase1StdErrPath -ErrorAction SilentlyContinue
+            if ($stderr) {
+                Write-Host "Phase 1 stderr:" -ForegroundColor Yellow
+                $stderr | Select-Object -Last 20 | ForEach-Object { Write-Host $_ -ForegroundColor DarkYellow }
+                $streamsShown = $true
+            }
+        }
+
+        if (Test-Path $Phase1StdOutPath) {
+            $stdout = Get-Content -Path $Phase1StdOutPath -ErrorAction SilentlyContinue
+            if ($stdout) {
+                Write-Host "Phase 1 output:" -ForegroundColor Yellow
+                $stdout | Select-Object -Last 20 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+                $streamsShown = $true
+            }
+        }
+
+        if (-not $streamsShown) {
+            Write-Host "No Phase 1 stdout/stderr was captured." -ForegroundColor DarkYellow
+        }
+    }
 
     if (-not (Test-Path $StatusPath) -and $phase1Process.ExitCode -ne 0) {
         Log "Phase 1 exited before writing a status file. Exit code: $($phase1Process.ExitCode)" Critical
+        Show-Phase1Diagnostics
         Write-Host "Phase 1 failed before writing a status file. Exit code: $($phase1Process.ExitCode)" -ForegroundColor Red
         return 1
     }
