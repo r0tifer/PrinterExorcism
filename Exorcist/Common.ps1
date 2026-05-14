@@ -22,8 +22,15 @@ function Log-PrinterEvent {
         $entry | Add-Content -Path $LogPath
     }
 
-    # Write to terminal if verbosity allows
-    if ($Verbosity -ge $msgLevel) {
+    # Write to terminal if verbosity allows. Debug is special: it prints everything.
+    $writeToConsole = $false
+    if ($Verbosity -ge 3) {
+        $writeToConsole = $true
+    } elseif ($Level -ne "Debug" -and $msgLevel -ge $Verbosity) {
+        $writeToConsole = $true
+    }
+
+    if ($writeToConsole) {
         switch ($Level) {
             "Info"     { Write-Host $msg -ForegroundColor Gray }
             "Warning"  { Write-Warning $msg }

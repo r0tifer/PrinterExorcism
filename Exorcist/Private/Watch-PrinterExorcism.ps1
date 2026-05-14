@@ -31,7 +31,12 @@ function Start-PrinterExorcismSession {
         return 100
     }
 
-    $ConsoleLevel = if ($Verbosity -eq 3) { [LogVerbosity]::Debug } else { [LogVerbosity]::Critical }
+    try {
+        $ConsoleLevel = [LogVerbosity]$Verbosity
+    } catch {
+        $ConsoleLevel = [LogVerbosity]::Critical
+    }
+    $PrinterVerbosity = $ConsoleLevel.ToString()
 
     function Log {
         param (
@@ -71,7 +76,7 @@ function Start-PrinterExorcismSession {
         Write-Host "Phase $phase cleanup summary for: $($status.user)" -ForegroundColor Cyan
         Write-Host "   Printers cleaned:   $cleanedPrinters" -ForegroundColor Green
         Write-Host "   Printers failed:    $failedPrinters" -ForegroundColor $printerFailureColor
-        Write-Host "   Ghosts detected:    $cleanedGhosts" -ForegroundColor Green
+        Write-Host "   Ghosts cleaned:     $cleanedGhosts" -ForegroundColor Green
         Write-Host "   Ghosts failed:      $failedGhosts" -ForegroundColor $ghostFailureColor
         if ($ghostCleanupPending) {
             Write-Host "   Ghost cleanup pending admin phase: yes" -ForegroundColor Yellow
@@ -81,7 +86,7 @@ function Start-PrinterExorcismSession {
         Log "Phase $phase cleanup summary for user: $($status.user)" Info
         Log "Printers cleaned:   $cleanedPrinters" Info
         Log "Printers failed:    $failedPrinters" $printerFailureLevel
-        Log "Ghosts detected:    $cleanedGhosts" Info
+        Log "Ghosts cleaned:     $cleanedGhosts" Info
         Log "Ghosts failed:      $failedGhosts" $ghostFailureLevel
         if ($ghostCleanupPending) {
             Log "Ghost cleanup pending admin phase: yes" Info
@@ -138,6 +143,7 @@ function Start-PrinterExorcismSession {
         $args += "-NoSelfElevation"
         $args += @("-StatusPath", "`"$StatusPath`"")
         $args += @("-LogPath", "`"$LogPath`"")
+        $args += @("-Verbosity", $PrinterVerbosity)
         if ($FullCleanup)    { $args += "-FullCleanup" }
         if ($CompareGPO)     { $args += "-CompareGPO" }
         if ($Automated)      { $args += "-Automated" }
@@ -300,7 +306,8 @@ function Start-PrinterExorcismSession {
             '-RetryOnly',
             '-NoSelfElevation',
             '-StatusPath', "`"$StatusPath`"",
-            '-LogPath', "`"$LogPath`""
+            '-LogPath', "`"$LogPath`"",
+            '-Verbosity', $PrinterVerbosity
         )
         if ($status.failed_printers.Count -gt 0) {
             $innerArgsList += '-RetryPrinters', "`"$($status.failed_printers -join '|')`""

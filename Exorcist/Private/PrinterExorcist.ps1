@@ -73,8 +73,8 @@ foreach ($dir in $OutputDirs) {
     }
 }
 
-# Define default console logging
-$ConsoleLevel = [LogVerbosity]::Info
+# Define console logging
+$ConsoleLevel = [LogVerbosity]::$Verbosity
 
 function Log {
     param (
@@ -270,6 +270,95 @@ function New-PrinterCountMap {
     return New-Object 'System.Collections.Generic.Dictionary[string,int]' ([System.StringComparer]::OrdinalIgnoreCase)
 }
 
+function Add-StatusItem {
+    param(
+        [string[]]$Items,
+        [string]$Item
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Item)) {
+        return @($Items)
+    }
+
+    if (@($Items) -contains $Item) {
+        return @($Items)
+    }
+
+    return @($Items + $Item)
+}
+
+function Remove-StatusItem {
+    param(
+        [string[]]$Items,
+        [string]$Item
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Item)) {
+        return @($Items)
+    }
+
+    return @($Items | Where-Object { $_ -ne $Item })
+}
+
+function Get-WmiMethodReturnValue {
+    param(
+        $Result
+    )
+
+    if ($null -eq $Result) {
+        return 0
+    }
+
+    if ($Result -is [int]) {
+        return [int]$Result
+    }
+
+    if ($Result.PSObject.Properties.Name -contains 'ReturnValue') {
+        return [int]$Result.ReturnValue
+    }
+
+    return 0
+}
+
+function Test-PrinterStillPresent {
+    param(
+        [string]$Name
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Name) -or $Name -eq "_DEFER_GHOST_CLEANUP_") {
+        return $false
+    }
+
+    try {
+        $printer = @(Get-Printer -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $Name })
+        if ($printer) {
+            return $true
+        }
+    } catch {
+        Log "Get-Printer verification failed for ${Name}: $_" "Debug"
+    }
+
+    try {
+        $escapedName = $Name.Replace('\', '\\').Replace("'", "''")
+        $wmiPrinter = Get-WmiObject -Query "Select * from Win32_Printer Where Name = '$escapedName'" -ErrorAction SilentlyContinue
+        return [bool]$wmiPrinter
+    } catch {
+        Log "WMI verification failed for ${Name}: $_" "Debug"
+    }
+
+    return $false
+}
+
+function Reconcile-PrinterStatus {
+    foreach ($printerName in @($script:FailedPrinters)) {
+        if (-not (Test-PrinterStillPresent -Name $printerName)) {
+            $script:FailedPrinters = Remove-StatusItem $script:FailedPrinters $printerName
+            $script:CleanedPrinters = Add-StatusItem $script:CleanedPrinters $printerName
+            Log "Verified removed after fallback cleanup: $printerName" "Info"
+        }
+    }
+}
+
 function Add-PrinterConnectionCandidate {
     param(
         [string]$Name
@@ -352,7 +441,9 @@ function Invoke-PrintUiPrinterConnectionRemoval {
 
         $output = & rundll32.exe @arguments 2>&1
         $exitCode = $LASTEXITCODE
-        if ($exitCode -eq 0) {
+        if ($null -eq $exitCode) {
+            Log "PrintUI cleanup ($modeSwitch) completed without reporting an exit code for $connectionName" "Debug"
+        } elseif ($exitCode -eq 0) {
             Log "Issued PrintUI cleanup ($modeSwitch) for $connectionName" "Info"
         } else {
             $message = if ($output) { ($output | Out-String).Trim() } else { "exit $exitCode" }
@@ -542,6 +633,10 @@ function Remove-StalePrintEnumDevices {
 
     $activeNameSet = New-PrinterKeySet
     $activeCanonicalKeySet = New-PrinterKeySet
+    $protectedPrintEnumNames = @(
+        "Root Print Queue"
+    )
+
     foreach ($printerName in $ActivePrinterNames) {
         if ([string]::IsNullOrWhiteSpace($printerName)) {
             continue
@@ -573,6 +668,11 @@ function Remove-StalePrintEnumDevices {
             continue
         }
 
+        if ($protectedPrintEnumNames -contains $friendlyName -or $device.PSChildName -ieq "PrintQueues") {
+            Log "Keeping protected PRINTENUM device: $friendlyName" "Debug"
+            continue
+        }
+
         Add-PrinterConnectionCandidate -Name $friendlyName
 
         $deviceInfo = Get-PrinterConnectionInfo -Name $friendlyName
@@ -592,7 +692,8 @@ function Remove-StalePrintEnumDevices {
 
         if ($exitCode -eq 0 -or $exitCode -eq 3010) {
             Log "Removed stale PRINTENUM device: $friendlyName ($instanceId)" "Info"
-            $script:CleanedGhosts += $friendlyName
+            $script:CleanedGhosts = Add-StatusItem $script:CleanedGhosts $friendlyName
+            $script:FailedGhosts = Remove-StatusItem $script:FailedGhosts $friendlyName
             $removedAny = $true
             if ($exitCode -eq 3010) {
                 Log "PRINTENUM device removal requested reboot: $friendlyName" "Warning"
@@ -600,7 +701,7 @@ function Remove-StalePrintEnumDevices {
         } else {
             $message = if ($output) { ($output | Out-String).Trim() } else { "exit $exitCode" }
             Log "Failed to remove stale PRINTENUM device: $friendlyName ($instanceId) - $message" "Warning"
-            $script:FailedGhosts += $friendlyName
+            $script:FailedGhosts = Add-StatusItem $script:FailedGhosts $friendlyName
         }
     }
 
@@ -838,10 +939,18 @@ foreach ($printer in $Printers) {
         if ($RetryOnly) {
             if ($RetryPrinters -and ($RetryPrinters -split "\|") -contains $printer.Name) {
                 try {
-                    $printer.Delete() | Out-Null
-                    Log "Retried and removed: $($printer.Name)" "Info"
+                    $deleteResult = $printer.Delete()
+                    $deleteReturnValue = Get-WmiMethodReturnValue -Result $deleteResult
+                    if ($deleteReturnValue -eq 0) {
+                        Log "Retried and removed: $($printer.Name)" "Info"
+                        $CleanedPrinters = Add-StatusItem $CleanedPrinters $printer.Name
+                    } else {
+                        Log "Still failed to remove: $($printer.Name) - WMI returned $deleteReturnValue" "Critical"
+                        $FailedPrinters = Add-StatusItem $FailedPrinters $printer.Name
+                    }
                 } catch {
                     Log "Still failed to remove: $($printer.Name)" "Critical"
+                    $FailedPrinters = Add-StatusItem $FailedPrinters $printer.Name
                 }
             }
         } else {
@@ -850,12 +959,18 @@ foreach ($printer in $Printers) {
                 continue
             }
             try {
-                $printer.Delete() | Out-Null
-                Log "Removed printer: $($printer.Name)" "Info"
-                $CleanedPrinters += $printer.Name
+                $deleteResult = $printer.Delete()
+                $deleteReturnValue = Get-WmiMethodReturnValue -Result $deleteResult
+                if ($deleteReturnValue -eq 0) {
+                    Log "Removed printer: $($printer.Name)" "Info"
+                    $CleanedPrinters = Add-StatusItem $CleanedPrinters $printer.Name
+                } else {
+                    Log "Failed to remove: $($printer.Name) - WMI returned $deleteReturnValue" "Warning"
+                    $FailedPrinters = Add-StatusItem $FailedPrinters $printer.Name
+                }
             } catch {
                 Log "Failed to remove: $($printer.Name)" "Warning"
-                $FailedPrinters += $printer.Name
+                $FailedPrinters = Add-StatusItem $FailedPrinters $printer.Name
             }
         }
     } elseif (-not $RetryOnly) {
@@ -865,7 +980,7 @@ foreach ($printer in $Printers) {
 
 # Ghost printer detection deferral
 if (-not $RetryOnly -and -not $IsAdmin) {
-    $FailedGhosts += "_DEFER_GHOST_CLEANUP_"
+    $FailedGhosts = Add-StatusItem $FailedGhosts "_DEFER_GHOST_CLEANUP_"
     Log "Skipped ghost detection: elevation required. Scheduling retry..." "Warning"
 }
 
@@ -949,14 +1064,42 @@ if ($IsAdmin -or $RetryOnly) {
 
     if ($FoundGhosts.Count -gt 0) {
         foreach ($ghost in $FoundGhosts) {
+            $trackAsPrinterCleanup = [bool]$FullCleanup
             try {
                 Remove-Printer -Name $ghost.Name -ErrorAction Stop
                 Log "Removed printer via Remove-Printer: $($ghost.Name)" "Info"
-                $CleanedGhosts += $ghost.Name
+                if ($trackAsPrinterCleanup) {
+                    $CleanedPrinters = Add-StatusItem $CleanedPrinters $ghost.Name
+                    $FailedPrinters = Remove-StatusItem $FailedPrinters $ghost.Name
+                } else {
+                    $CleanedGhosts = Add-StatusItem $CleanedGhosts $ghost.Name
+                    $FailedGhosts = Remove-StatusItem $FailedGhosts $ghost.Name
+                }
             }
             catch {
-                Log "Failed to remove printer via Remove-Printer: $($ghost.Name) - $_" "Critical"
-                $FailedGhosts += $ghost.Name
+                Log "Remove-Printer reported for $($ghost.Name): $_" "Warning"
+                Invoke-PrintUiPrinterConnectionRemoval -ConnectionNames @($ghost.Name)
+                if ($IsAdmin) {
+                    Invoke-PrintUiPrinterConnectionRemoval -ConnectionNames @($ghost.Name) -PerMachine
+                }
+
+                if (Test-PrinterStillPresent -Name $ghost.Name) {
+                    Log "Failed to remove printer after fallbacks: $($ghost.Name)" "Critical"
+                    if ($trackAsPrinterCleanup) {
+                        $FailedPrinters = Add-StatusItem $FailedPrinters $ghost.Name
+                    } else {
+                        $FailedGhosts = Add-StatusItem $FailedGhosts $ghost.Name
+                    }
+                } else {
+                    Log "Removed printer via fallback cleanup: $($ghost.Name)" "Info"
+                    if ($trackAsPrinterCleanup) {
+                        $CleanedPrinters = Add-StatusItem $CleanedPrinters $ghost.Name
+                        $FailedPrinters = Remove-StatusItem $FailedPrinters $ghost.Name
+                    } else {
+                        $CleanedGhosts = Add-StatusItem $CleanedGhosts $ghost.Name
+                        $FailedGhosts = Remove-StatusItem $FailedGhosts $ghost.Name
+                    }
+                }
             }
         }
     }
@@ -964,7 +1107,12 @@ if ($IsAdmin -or $RetryOnly) {
         Log "No removable printer connections detected by Get-Printer." "Info"
     }
 
-    $ActivePrinterNames = @($AllPrinters | Select-Object -ExpandProperty Name)
+    try {
+        $ActivePrinterNames = @(Get-Printer -ErrorAction Stop | Select-Object -ExpandProperty Name)
+    } catch {
+        Log "Could not refresh printer list before PRINTENUM cleanup: $($_.Exception.Message)" "Warning"
+        $ActivePrinterNames = @($AllPrinters | Select-Object -ExpandProperty Name)
+    }
     Remove-StalePrintEnumDevices -ActivePrinterNames $ActivePrinterNames -BuiltInPrinterNames $BuiltinPrinters
 
     $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers"
@@ -988,11 +1136,12 @@ if ($IsAdmin -or $RetryOnly) {
             try {
                 Remove-Item -Path $keyPath -Recurse -Force -ErrorAction Stop
                 Log "Removed registry ghost key: $($r.PSChildName)" "Info"
-                $CleanedGhosts += $r.PSChildName
+                $CleanedGhosts = Add-StatusItem $CleanedGhosts $r.PSChildName
+                $FailedGhosts = Remove-StatusItem $FailedGhosts $r.PSChildName
             }
             catch {
                 Log "Failed to remove registry ghost key: $($r.PSChildName) - $_" "Critical"
-                $FailedGhosts += $r.PSChildName
+                $FailedGhosts = Add-StatusItem $FailedGhosts $r.PSChildName
             }
         }
     }
@@ -1009,6 +1158,13 @@ if ($IsAdmin -or $RetryOnly) {
 if ($IsAdmin) {
     Remove-HKLMPrinterConnections
 }
+
+Reconcile-PrinterStatus
+
+$CleanedPrinters = @($CleanedPrinters | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+$FailedPrinters = @($FailedPrinters | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+$CleanedGhosts = @($CleanedGhosts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+$FailedGhosts = @($FailedGhosts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
 
 # Write status for this phase
 $phaseNum = if ($RetryOnly) { 2 } else { 1 }
