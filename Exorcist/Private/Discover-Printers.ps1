@@ -112,7 +112,9 @@ $paths = @(
     "Printers\Settings",
     "Software\Microsoft\Windows NT\CurrentVersion\Devices",
     "Software\Microsoft\Windows NT\CurrentVersion\PrinterPorts",
-    "Software\Policies\Microsoft\Windows NT\Printers\Connections"
+    "Software\Policies\Microsoft\Windows NT\Printers\Connections",
+    "Software\Policies\Microsoft\Windows NT\Printers\PushedConnections",
+    "Software\Policies\Microsoft\Windows NT\Printers\PushedPrinterConnectionStore"
 )
 
 foreach ($sub in $paths) {
@@ -123,6 +125,39 @@ foreach ($sub in $paths) {
         $entries | ForEach-Object { Write-Host "   - $_" }
         $Discovery.registry_entries[$sub] = $entries
     }
+}
+
+$machinePaths = @(
+    @{
+        Label = "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Print\Providers\Client Side Rendering Print Provider\Servers"
+        Path = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Print\Providers\Client Side Rendering Print Provider\Servers"
+    },
+    @{
+        Label = "HKLM\SOFTWARE\Wow6432Node\Microsoft\Windows NT\CurrentVersion\Print\Providers\Client Side Rendering Print Provider\Servers"
+        Path = "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows NT\CurrentVersion\Print\Providers\Client Side Rendering Print Provider\Servers"
+    }
+)
+
+foreach ($machinePath in $machinePaths) {
+    if (-not (Test-Path $machinePath.Path)) {
+        continue
+    }
+
+    Write-Host "`n$($machinePath.Label)" -ForegroundColor Yellow
+    $entries = @()
+    foreach ($server in Get-ChildItem -Path $machinePath.Path -ErrorAction SilentlyContinue) {
+        $printersPath = Join-Path -Path $server.PSPath -ChildPath "Printers"
+        if (Test-Path $printersPath) {
+            $entries += Get-ChildItem -Path $printersPath -ErrorAction SilentlyContinue | ForEach-Object {
+                "\\$($server.PSChildName)\$($_.PSChildName)"
+            }
+        } else {
+            $entries += $server.PSChildName
+        }
+    }
+
+    $entries | ForEach-Object { Write-Host "   - $_" }
+    $Discovery.registry_entries[$machinePath.Label] = $entries
 }
 
 # Default Printer

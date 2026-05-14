@@ -240,6 +240,7 @@ function Get-GpoPrinterConnections {
 
     $paths = @(
         "$UserRegistryRoot\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\Connections",
+        "$UserRegistryRoot\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PushedConnections",
         "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\Print\Connections",
         "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers\Connections"
     ) | Select-Object -Unique
@@ -269,6 +270,150 @@ function New-PrinterCountMap {
     return New-Object 'System.Collections.Generic.Dictionary[string,int]' ([System.StringComparer]::OrdinalIgnoreCase)
 }
 
+function Add-PrinterConnectionCandidate {
+    param(
+        [string]$Name
+    )
+
+    if (-not $script:ConnectionCleanupTargets -or [string]::IsNullOrWhiteSpace($Name)) {
+        return
+    }
+
+    $info = Get-PrinterConnectionInfo -Name $Name
+    if ($info -and $info.PreferredPathName) {
+        $null = $script:ConnectionCleanupTargets.Add($info.PreferredPathName)
+    }
+}
+
+function Add-PrinterConnectionCandidatesFromKeyPath {
+    param(
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path $Path)) {
+        return
+    }
+
+    foreach ($item in Get-ChildItem -Path $Path -ErrorAction SilentlyContinue) {
+        Add-PrinterConnectionCandidate -Name $item.PSChildName
+    }
+}
+
+function Add-PrinterConnectionCandidatesFromNames {
+    param(
+        [string[]]$Names
+    )
+
+    foreach ($name in $Names) {
+        Add-PrinterConnectionCandidate -Name $name
+    }
+}
+
+function Add-PrinterConnectionCandidatesFromCsrServerRoot {
+    param(
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path $Path)) {
+        return
+    }
+
+    foreach ($server in Get-ChildItem -Path $Path -ErrorAction SilentlyContinue) {
+        $printersPath = Join-Path -Path $server.PSPath -ChildPath "Printers"
+        if (-not (Test-Path $printersPath)) {
+            continue
+        }
+
+        foreach ($printer in Get-ChildItem -Path $printersPath -ErrorAction SilentlyContinue) {
+            Add-PrinterConnectionCandidate -Name "\\$($server.PSChildName)\$($printer.PSChildName)"
+        }
+    }
+}
+
+function Invoke-PrintUiPrinterConnectionRemoval {
+    param(
+        [string[]]$ConnectionNames,
+        [switch]$PerMachine
+    )
+
+    $targets = @($ConnectionNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+    if ($targets.Count -eq 0) {
+        return
+    }
+
+    $modeSwitch = if ($PerMachine) { "/gd" } else { "/dn" }
+    foreach ($connectionName in $targets) {
+        $arguments = @(
+            "printui.dll,PrintUIEntry",
+            "/q",
+            $modeSwitch,
+            "/n$connectionName"
+        )
+
+        $output = & rundll32.exe @arguments 2>&1
+        $exitCode = $LASTEXITCODE
+        if ($exitCode -eq 0) {
+            Log "Issued PrintUI cleanup ($modeSwitch) for $connectionName" "Info"
+        } else {
+            $message = if ($output) { ($output | Out-String).Trim() } else { "exit $exitCode" }
+            Log "PrintUI cleanup ($modeSwitch) reported for ${connectionName}: $message" "Warning"
+        }
+    }
+}
+
+function Remove-PolicyPushedPrinterConnections {
+    param(
+        [string]$UserRegistryRoot = "HKCU:",
+        [bool]$CompareGPO,
+        [System.Collections.Generic.HashSet[string]]$AllowedGpoPrinterKeys
+    )
+
+    $pushedConnectionsPath = "$UserRegistryRoot\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PushedConnections"
+    if (Test-Path $pushedConnectionsPath) {
+        foreach ($item in Get-ChildItem -Path $pushedConnectionsPath -ErrorAction SilentlyContinue) {
+            Add-PrinterConnectionCandidate -Name $item.PSChildName
+
+            $info = Get-PrinterConnectionInfo -Name $item.PSChildName
+            $keep = $false
+            if ($CompareGPO -and $info -and $info.CanonicalKey) {
+                $keep = $AllowedGpoPrinterKeys.Contains($info.CanonicalKey)
+            }
+
+            if ($keep) {
+                Log "Keeping GPO-managed pushed printer connection: $($item.PSChildName)" "Debug"
+                continue
+            }
+
+            try {
+                Remove-Item -Path $item.PSPath -Recurse -Force -ErrorAction Stop
+                Log "Removed pushed printer connection: $($item.PSChildName)" "Info"
+            } catch {
+                Log "Failed to remove pushed printer connection: $($item.PSChildName) - $_" "Warning"
+            }
+        }
+    } else {
+        Log "No pushed printer connections found at: $pushedConnectionsPath" "Debug"
+    }
+
+    $pushedStorePath = "$UserRegistryRoot\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PushedPrinterConnectionStore"
+    if (-not (Test-Path $pushedStorePath)) {
+        Log "No pushed printer connection store found at: $pushedStorePath" "Debug"
+        return
+    }
+
+    if ($CompareGPO) {
+        Log "Leaving pushed printer connection store intact during CompareGPO mode: $pushedStorePath" "Debug"
+        return
+    }
+
+    try {
+        Remove-Item -Path $pushedStorePath -Recurse -Force -ErrorAction Stop
+        Log "Removed pushed printer connection store: $pushedStorePath" "Info"
+    } catch {
+        Log "Failed to remove pushed printer connection store: $pushedStorePath - $_" "Warning"
+    }
+}
+
 function Remove-ClientSideRenderingConnections {
     param(
         [string]$UserSid,
@@ -287,6 +432,8 @@ function Remove-ClientSideRenderingConnections {
     }
 
     foreach ($connection in Get-ChildItem -Path $csrConnectionsPath -ErrorAction SilentlyContinue) {
+        Add-PrinterConnectionCandidate -Name $connection.PSChildName
+
         $info = Get-PrinterConnectionInfo -Name $connection.PSChildName
         $keep = $false
         if ($CompareGPO -and $info -and $info.CanonicalKey) {
@@ -303,6 +450,80 @@ function Remove-ClientSideRenderingConnections {
             Log "Removed CSR printer connection cache: $($connection.PSChildName)" "Info"
         } catch {
             Log "Failed to remove CSR printer connection cache: $($connection.PSChildName) - $_" "Warning"
+        }
+    }
+}
+
+function Remove-ClientSideRenderingServerCaches {
+    param(
+        [bool]$CompareGPO,
+        [System.Collections.Generic.HashSet[string]]$AllowedGpoPrinterKeys
+    )
+
+    $csrServerRoots = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Print\Providers\Client Side Rendering Print Provider\Servers",
+        "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows NT\CurrentVersion\Print\Providers\Client Side Rendering Print Provider\Servers"
+    ) | Select-Object -Unique
+
+    foreach ($root in $csrServerRoots) {
+        if (-not (Test-Path $root)) {
+            Log "No CSR server printer cache found at: $root" "Debug"
+            continue
+        }
+
+        Add-PrinterConnectionCandidatesFromCsrServerRoot -Path $root
+
+        foreach ($server in Get-ChildItem -Path $root -ErrorAction SilentlyContinue) {
+            $serverPrintersPath = Join-Path -Path $server.PSPath -ChildPath "Printers"
+
+            if (-not (Test-Path $serverPrintersPath)) {
+                if (-not $CompareGPO) {
+                    try {
+                        Remove-Item -Path $server.PSPath -Recurse -Force -ErrorAction Stop
+                        Log "Removed CSR server cache: $($server.PSChildName)" "Info"
+                    } catch {
+                        Log "Failed to remove CSR server cache: $($server.PSChildName) - $_" "Warning"
+                    }
+                }
+                continue
+            }
+
+            foreach ($printer in Get-ChildItem -Path $serverPrintersPath -ErrorAction SilentlyContinue) {
+                $connectionName = "\\$($server.PSChildName)\$($printer.PSChildName)"
+                Add-PrinterConnectionCandidate -Name $connectionName
+
+                $info = Get-PrinterConnectionInfo -Name $connectionName
+                $keep = $false
+                if ($CompareGPO -and $info -and $info.CanonicalKey) {
+                    $keep = $AllowedGpoPrinterKeys.Contains($info.CanonicalKey)
+                }
+
+                if ($keep) {
+                    Log "Keeping GPO-managed CSR server printer cache: $connectionName" "Debug"
+                    continue
+                }
+
+                try {
+                    Remove-Item -Path $printer.PSPath -Recurse -Force -ErrorAction Stop
+                    Log "Removed CSR server printer cache: $connectionName" "Info"
+                } catch {
+                    Log "Failed to remove CSR server printer cache: $connectionName - $_" "Warning"
+                }
+            }
+
+            $remainingPrinters = @()
+            if (Test-Path $serverPrintersPath) {
+                $remainingPrinters = @(Get-ChildItem -Path $serverPrintersPath -ErrorAction SilentlyContinue)
+            }
+
+            if (-not $CompareGPO -or $remainingPrinters.Count -eq 0) {
+                try {
+                    Remove-Item -Path $server.PSPath -Recurse -Force -ErrorAction Stop
+                    Log "Removed empty CSR server cache: $($server.PSChildName)" "Info"
+                } catch {
+                    Log "Failed to remove empty CSR server cache: $($server.PSChildName) - $_" "Warning"
+                }
+            }
         }
     }
 }
@@ -351,6 +572,8 @@ function Remove-StalePrintEnumDevices {
         if ($BuiltInPrinterNames -contains $friendlyName) {
             continue
         }
+
+        Add-PrinterConnectionCandidate -Name $friendlyName
 
         $deviceInfo = Get-PrinterConnectionInfo -Name $friendlyName
         $isActive = $activeNameSet.Contains($friendlyName)
@@ -453,6 +676,7 @@ $CleanedPrinters = @()
 $CleanedGhosts   = @()
 $FailedPrinters = @()
 $FailedGhosts = @()
+$script:ConnectionCleanupTargets = New-PrinterKeySet
 
 # Registry Context
 $CurrentUser = $env:USERNAME
@@ -460,6 +684,7 @@ $UserHivePath = "C:\Users\$TargetUser\NTUSER.DAT"
 $MountKey = "HKU\TempUserHive"
 $HKCU = "HKCU:"
 $MountedHive = $false
+$CanRunPerUserPrintUiCleanup = $TargetUser -eq $CurrentUser
 
 if ($TargetUser -and $TargetUser -ne $CurrentUser) {
     $LoadedHiveRoot = Get-LoadedUserHiveRoot -UserName $TargetUser
@@ -509,6 +734,21 @@ if ($CompareGPO) {
 # User-space Registry Cleanup
 if (-not $RetryOnly) {
     Log "Removing user-space printer registry entries..." "Info"
+    $ConnectionsKey = "$HKCU\\Printers\\Connections"
+    $UserPolicyPrinterPaths = @(
+        "$HKCU\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PushedConnections",
+        "$HKCU\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PushedPrinterConnectionStore"
+    )
+
+    Add-PrinterConnectionCandidatesFromKeyPath -Path $ConnectionsKey
+    foreach ($policyPath in $UserPolicyPrinterPaths) {
+        Add-PrinterConnectionCandidatesFromKeyPath -Path $policyPath
+    }
+
+    if ($CanRunPerUserPrintUiCleanup) {
+        Invoke-PrintUiPrinterConnectionRemoval -ConnectionNames @($script:ConnectionCleanupTargets)
+    }
+
     $UserRegPaths = @(
         "$HKCU\\Printers\\ConvertUserDevModesCount",
         "$HKCU\\Printers\\DevModePerUser",
@@ -531,7 +771,6 @@ if (-not $RetryOnly) {
         }
     }
 
-    $ConnectionsKey = "$HKCU\\Printers\\Connections"
     if ($CompareGPO) {
         $Active = @(Get-ChildItem -Path $ConnectionsKey -ErrorAction SilentlyContinue)
         foreach ($conn in $Active) {
@@ -564,6 +803,8 @@ if (-not $RetryOnly) {
         }
     }
 
+    Remove-PolicyPushedPrinterConnections -UserRegistryRoot $HKCU -CompareGPO:$CompareGPO -AllowedGpoPrinterKeys $AllowedGpoPrinterKeys
+
     $DefaultKey = "$HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows"
     if (Test-Path $DefaultKey) {
         try {
@@ -586,6 +827,8 @@ if (-not $RetryOnly) {
 $Printers = Get-WmiObject -Query "Select * from Win32_Printer"
 foreach ($printer in $Printers) {
     if ($BuiltinPrinters -notcontains $printer.Name) {
+        Add-PrinterConnectionCandidate -Name $printer.Name
+
         $printerInfo = Get-PrinterConnectionInfo -Name $printer.Name
         $isGpoManagedPrinter = $false
         if ($CompareGPO -and $printerInfo -and $printerInfo.CanonicalKey) {
@@ -637,7 +880,9 @@ if ($IsAdmin -or $RetryOnly) {
         $AllPrinters = @()
     }
 
+    Add-PrinterConnectionCandidatesFromNames -Names @($AllPrinters | Select-Object -ExpandProperty Name)
     Remove-ClientSideRenderingConnections -UserSid $TargetUserSid -CompareGPO:$CompareGPO -AllowedGpoPrinterKeys $AllowedGpoPrinterKeys
+    Remove-ClientSideRenderingServerCaches -CompareGPO:$CompareGPO -AllowedGpoPrinterKeys $AllowedGpoPrinterKeys
 
     $GhostPatterns = @(
         'Copy*',
@@ -753,6 +998,10 @@ if ($IsAdmin -or $RetryOnly) {
     }
     elseif ($FoundGhosts.Count -eq 0) {
         Log "No registry-based ghost keys found." "Debug"
+    }
+
+    if ($IsAdmin) {
+        Invoke-PrintUiPrinterConnectionRemoval -ConnectionNames @($script:ConnectionCleanupTargets) -PerMachine
     }
 }
 

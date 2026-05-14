@@ -33,13 +33,22 @@ Both phases write to a structured JSON status file and a timestamped log. The or
 
 ## Installation
 
-Run this from an elevated PowerShell prompt. The installer will summon the module from GitHub, unpack the sacred arsenal, and drop it into the system module path:
+Run this from PowerShell. The installer will summon the module from GitHub, unpack the sacred arsenal, and place it in an importable module path:
 
 ```powershell
 irm https://raw.githubusercontent.com/r0tifer/PrinterExorcism/main/Install.ps1 | iex
 ```
 
-The module installs to `%ProgramFiles%\WindowsPowerShell\Modules\PrinterExorcism` and is immediately importable.
+By default, the installer uses `-Scope Auto`: elevated sessions try the all-users module path first, while non-elevated sessions use the current-user module path. If Program Files is locked down by endpoint policy, the auto installer falls back to the current-user path instead of continuing with a partial install.
+
+To force a specific scope:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/r0tifer/PrinterExorcism/main/Install.ps1))) -Scope CurrentUser
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/r0tifer/PrinterExorcism/main/Install.ps1))) -Scope AllUsers
+```
+
+The module is imported immediately after installation.
 
 ---
 
